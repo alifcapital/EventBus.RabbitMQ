@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - EventStorage/**
+      - .github/workflows/release.yml
+      - .github/workflows/service-versioning.yml
+      - .github/workflows/push-nuget-package.yml
+
+permissions:
+  contents: write  # Grant the workflow permission to push to the repository
+
+jobs:
+  Versioning:
+    uses: ./.github/workflows/service-versioning.yml
+    with:
+      project_file_path: "src/EventBus.RabbitMQ.csproj"
+      should_add_version_tag: ${{ github.ref == 'refs/heads/main' }}
+  
+  Release:
+    needs: Versioning
+    uses: ./.github/workflows/push-nuget-package.yml
+    with:
+      project_file_path: 'src/EventBus.RabbitMQ.csproj'
+      package_name: ${{ vars.PACKAGE_NAME }}
+      version: ${{ needs.Versioning.outputs.version }}
+    secrets: inherit

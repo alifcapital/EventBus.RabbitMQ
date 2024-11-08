@@ -1,0 +1,11 @@
+name: EventBus RabbitMQ tests
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  Testing:
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      unit_and_functionality_tests_project_path: 'tests/EventBus.RabbitMQ.Tests.csproj'
