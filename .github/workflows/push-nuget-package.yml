@@ -25,6 +25,9 @@ jobs:
         uses: actions/setup-dotnet@v1
         with:
           dotnet-version: 8.0.x
+          
+      - name: Add GitHub Packages source
+        run: dotnet nuget add source https://nuget.pkg.github.com/alifcapital/index.json --name github --username ${{ github.actor }} --password ${{ secrets.EVENTBUS_RABBITMQ_SECRET }} --store-password-in-clear-text
 
       - name: Restore dependencies
         run: dotnet restore ${{ inputs.project_file_path }}
