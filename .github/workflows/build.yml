@@ -27,8 +27,8 @@ jobs:
 
       - name: Build the EventBus.RabbitMQ in Debug mode
         if: github.event_name == 'pull_request'
-        run: dotnet build "src/EventBus.RabbitMQ.csproj.csproj" --configuration Debug --no-restore
+        run: dotnet build "src/EventBus.RabbitMQ.csproj" --configuration Debug --no-restore
 
       - name: Build the EventBus.RabbitMQ in Release mode
         if: github.event_name != 'pull_request'
-        run: dotnet build "src/EventBus.RabbitMQ.csproj.csproj" --configuration Release --no-restore
+        run: dotnet build "src/EventBus.RabbitMQ.csproj" --configuration Release --no-restore
