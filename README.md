@@ -1,37 +1,78 @@
-## There are two libraries
-
-### 1. EventBus.RabbitMQ
+## EventBus.RabbitMQ
 EventBus.RabbitMQ is a messaging library designed to simplify the implementation of communication using RabbitMQ. It enables seamless publishing and receiving of events between microservices or other types of applications. The library is easy to set up and is compatible with .NET8 or recent frameworks. Additionally, it supports working with multiple virtual hosts in RabbitMQ.
-
-With this library, you can easily implement the [Inbox and outbox patterns](https://en.wikipedia.org/wiki/Inbox_and_outbox_pattern) in your application. It allows you to persist all incoming and outgoing event messages in the database. Currently, it supports storing event data only in a PostgreSQL database.
-
-### NuGet package
-[![Version](https://img.shields.io/nuget/v/Mirolim.EventBus.RabbitMQ?label=Version:Mirolim.EventBus.RabbitMQ)](https://www.nuget.org/packages/Mirolim.EventBus.RabbitMQ)
-[![Downloads](https://img.shields.io/nuget/dt/Mirolim.EventBus.RabbitMQ?label=Downloads:Mirolim.EventBus.RabbitMQ)](https://www.nuget.org/packages/Mirolim.EventBus.RabbitMQ)
-
-#### [See the EventBus.RabbitMQ documentation for more information](https://github.com/MirolimMajidov/EventMessaging?tab=readme-ov-file#getting-started-the-eventbusrabbitmq)
-
-### 2. EventStorage
-EventStorage is a library designed to simplify the implementation of the [Inbox and outbox patterns](https://en.wikipedia.org/wiki/Inbox_and_outbox_pattern) for handling multiple types of events in your application. It allows you to persist all incoming and outgoing event messages in the database. Currently, it supports storing event data only in a PostgreSQL database.
-
-### NuGet package
-[![Version](https://img.shields.io/nuget/v/Mirolim.EventStorage?label=Version:Mirolim.EventStorage)](https://www.nuget.org/packages/Mirolim.EventStorage)
-[![Downloads](https://img.shields.io/nuget/dt/Mirolim.EventStorage?label=Downloads:Mirolim.EventStorage)](https://www.nuget.org/packages/Mirolim.EventStorage)
-
-#### [See the EventStorage documentation for more information](https://github.com/MirolimMajidov/EventMessaging?tab=readme-ov-file#getting-started-the-eventstorage)
-
-## Getting started the EventBus.RabbitMQ
-EventBus.RabbitMQ is a messaging library designed to simplify the implementation of communication using RabbitMQ. It enables seamless publishing and receiving of events between microservices or other types of applications. The library is easy to set up and is compatible with .NET8 or recent frameworks. Additionally, it supports working with multiple virtual hosts in RabbitMQ.
-
-With this library, you can easily implement the [Inbox and outbox patterns](https://en.wikipedia.org/wiki/Inbox_and_outbox_pattern) in your application. It allows you to persist all incoming and outgoing event messages in the database. Currently, it supports storing event data only in a PostgreSQL database.
 
 ### Setting up the library
 
-Make sure you have installed and run [RabbitMQ](https://www.rabbitmq.com/docs/download) in your machine. After that, you need to install Mirolim.EventBus.RabbitMQ NuGet package.
+Make sure you have installed and run [PostgreSQL](https://www.postgresql.org/download/) in your machine.
 
-```powershell
-Install-Package Mirolim.EventBus.RabbitMQ
+To use this package from GitHub Packages in your projects, you need to authenticate using a **Personal Access Token (PAT)**.
+
+#### Step 1: Create a Personal Access Token (PAT)
+
+You will need a **Personal Access Token (PAT)** to authenticate and access the package. Follow GitHub's official guide to generate a PAT with the required scopes: [Creating a personal access token (classic)](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token).
+
+Make sure your PAT includes the following scope:
+- `read:packages`
+
+You need a GitHub [**Personal Access Token (PAT)**](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token) to authenticate and pull packages from GitHub Packages. To create one:
+
+1. Go to your GitHub account.
+2. Navigate to **Settings > Developer settings > Personal access tokens > Tokens (classic)**.
+3. Click on **Generate new token**.
+4. Select the following scope: `read:packages` (for reading packages)
+5. Generate the token and copy it. You'll need this token for authentication.
+
+#### Step 2: Add GitHub Packages as a NuGet Source
+
+You can choose one of two methods to add GitHub Packages as a source: either by adding the source dynamically via the `dotnet` CLI or using `NuGet.config`.
+
+**Option 1:** Adding Source via `dotnet` CLI
+
+Add the GitHub Package source with the token dynamically using the environment variable:
+
+```bash
+dotnet nuget add source https://nuget.pkg.github.com/alifcapital/index.json --name github --username GITHUB_USERNAME --password YOUR_PERSONAL_ACCESS_TOKEN --store-password-in-clear-text
 ```
+* Replace GITHUB_USERNAME with your GitHub username or any non-empty string if you are using the Personal Access Token (PAT).
+* Replace YOUR_PERSONAL_ACCESS_TOKEN with the generated PAT.
+
+**Option 2**: Using `NuGet.config`
+Add or update the `NuGet.config` file in your project root with the following content:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="github" value="https://nuget.pkg.github.com/alifcapital/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <github>
+      <add key="Username" value="GITHUB_USERNAME" />
+      <add key="ClearTextPassword" value="YOUR_PERSONAL_ACCESS_TOKEN" />
+    </github>
+  </packageSourceCredentials>
+</configuration>
+```
+* Replace GITHUB_USERNAME with your GitHub username or any non-empty string if you are using the Personal Access Token (PAT).
+* Replace YOUR_PERSONAL_ACCESS_TOKEN with the generated PAT.
+
+#### Step 3: Add the Package to Your Project
+Once your `NuGet.config` is set up, install the package by:
+
+**Via CLI:**
+
+```bash
+dotnet add package AlifCapital.EventBus.RabbitMQ --version <VERSION>
+```
+
+Or add it to your .csproj file:
+
+```xml
+<PackageReference Include="AlifCapital.EventBus.RabbitMQ" Version="<VERSION>" />
+```
+Make sure to replace <VERSION> with the correct version of the package you want to install.
+
+### How to use the library
 
 Register the nuget package's necessary services to the services of DI in the Program.cs and pass the assemblies to find and load the publishers and subscribers automatically:
 
