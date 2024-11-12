@@ -9,11 +9,6 @@ To use this package from GitHub Packages in your projects, you need to authentic
 
 #### Step 1: Create a Personal Access Token (PAT)
 
-You will need a **Personal Access Token (PAT)** to authenticate and access the package. Follow GitHub's official guide to generate a PAT with the required scopes: [Creating a personal access token (classic)](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token).
-
-Make sure your PAT includes the following scope:
-- `read:packages`
-
 You need a GitHub [**Personal Access Token (PAT)**](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token) to authenticate and pull packages from GitHub Packages. To create one:
 
 1. Go to your GitHub account.
@@ -57,7 +52,7 @@ Add or update the `NuGet.config` file in your project root with the following co
 * Replace YOUR_PERSONAL_ACCESS_TOKEN with the generated PAT.
 
 #### Step 3: Add the Package to Your Project
-Once your `NuGet.config` is set up, install the package by:
+Once you deal with the nuget source, install the package by:
 
 **Via CLI:**
 
