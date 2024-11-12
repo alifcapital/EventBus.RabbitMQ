@@ -8,6 +8,7 @@ on:
       - .github/workflows/release.yml
       - .github/workflows/service-versioning.yml
       - .github/workflows/push-nuget-package.yml
+  workflow_dispatch:
 
 permissions:
   contents: write  # Grant the workflow permission to push to the repository
