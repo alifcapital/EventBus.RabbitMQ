@@ -59,7 +59,7 @@ jobs:
           sudo sysctl -w vm.max_map_count=262144
           
       - name: Add GitHub Packages source
-        run: dotnet nuget add source https://nuget.pkg.github.com/alifcapital/index.json --name github --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text
+        run: dotnet nuget add source https://nuget.pkg.github.com/alifcapital/index.json --name github --username ${{ github.actor }} --password ${{ secrets.EVENTBUS_RABBITMQ_SECRET }} --store-password-in-clear-text
 
       - name: Restore dependencies
         run: dotnet restore ${{ inputs.unit_and_functionality_tests_project_path }}
