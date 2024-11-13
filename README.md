@@ -405,7 +405,7 @@ As you know, the Outbox pattern for storing all outgoing events or messages of a
     }
   }
 ```
-The `InboxAndOutbox` is the main section for setting of the Outbox and Inbox functionalities. The `Outbox` and `Inbox` subsections offer numerous options. For a detailed explanation on using these options, go to the [options of Inbox and Outbox sections](https://github.com/MirolimMajidov/EventMessaging?tab=readme-ov-file#options-of-inbox-and-outbox-sections) of the EventStorage documentation.
+The `InboxAndOutbox` is the main section for setting of the Outbox and Inbox functionalities. The `Outbox` and `Inbox` subsections offer numerous options. For a detailed explanation on using these options, go to the [options of Inbox and Outbox sections](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections) of the EventStorage documentation.
 
 Your application is now ready to use the Outbox feature. Now you can inject the `IEventSenderManager` interface from anywhere in your application, and use the `Send` method to publish your event.
 
@@ -477,7 +477,7 @@ public class CreatedUserMessageBrokerEventPublisher : IMessageBrokerEventPublish
 Since we want to publish our an event to the RabbitMQ, the event subscriber must implement the `IMessageBrokerEventPublisher` by passing the type of event we want to publish. And, inject the `IEventPublisherManager` interface to publish the publishing `UserCreated` event to the `RabbitMQ`.
 When we use the `Send` method of the `IEventSenderManager` to send an event, the event is first stored in the database. Based on our configuration (_by default, after one second_), the event will then be automatically execute the `Publish` method of created the `CreatedUserMessageBrokerEventPublisher` event publisher.
 
-If an event fails for any reason, the server will automatically retry publishing it, with delays based on the configuration you set in the [Outbox section](https://github.com/MirolimMajidov/EventMessaging?tab=readme-ov-file#options-of-inbox-and-outbox-sections).
+If an event fails for any reason, the server will automatically retry publishing it, with delays based on the configuration you set in the [Outbox section](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections).
 
 #### How to use the Inbox pattern in this library?
 
@@ -515,7 +515,7 @@ And then, set `true` to the `UseInbox` option of the `RabbitMQSettings.DefaultSe
   }
 ```
 
-That's all. Now all incoming events from RabbitMQ are stored in the `Inbox` table of the database and then execute the `Receive` method of your event subscriber. See the [document of creating event subscriber](https://github.com/MirolimMajidov/EventMessaging?tab=readme-ov-file#create-a-subscriber-to-the-event).
+That's all. Now all incoming events from RabbitMQ are stored in the `Inbox` table of the database and then execute the `Receive` method of your event subscriber. See the [document of creating event subscriber](https://github.com/alifcapital/EventBus.RabbitMQ?tab=readme-ov-file#create-a-subscriber-to-the-event).
 
 #### Advanced configuration of the Inbox and Outbox functionalities while registering to the DI services.
 
@@ -548,4 +548,4 @@ builder.Services.AddRabbitMQEventBus(builder.Configuration,
     }
 );
 ```
-`eventStoreOptions` - it is an alternative way of overwriting configurations of the `Inbox` and `Outbox` functionalities. If you don't pass them, it will use default settings from the `AppSettings`. About other configurations, you can get information from [here](https://github.com/MirolimMajidov/EventMessaging?tab=readme-ov-file#advanced-configuration-of-publishers-and-subscribers-while-registering-to-the-di-services).
+`eventStoreOptions` - it is an alternative way of overwriting configurations of the `Inbox` and `Outbox` functionalities. If you don't pass them, it will use default settings from the `AppSettings`. About other configurations, you can get information from [here](https://github.com/alifcapital/EventBus.RabbitMQ?tab=readme-ov-file#advanced-configuration-of-publishers-and-subscribers-while-registering-to-the-di-services).
