@@ -27,7 +27,7 @@ jobs:
           dotnet-version: 8.0.x
           
       - name: Add GitHub Packages source
-        run: dotnet nuget add source https://nuget.pkg.github.com/alifcapital/index.json --name github --username ${{ github.actor }} --password ${{ secrets.EVENTBUS_RABBITMQ_SECRET }} --store-password-in-clear-text
+        run: dotnet nuget add source https://nuget.pkg.github.com/alifcapital/index.json --name github --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text
 
       - name: Restore dependencies
         run: dotnet restore ${{ inputs.project_file_path }}
@@ -36,4 +36,4 @@ jobs:
         run: dotnet pack ${{ inputs.project_file_path }} --configuration Release --output ./nupkgs -p:PackageId="${{ inputs.package_name }}" -p:Version="${{ inputs.version }}"
 
       - name: Push the package to GitHub Packages
-        run: dotnet nuget push ./nupkgs/*.nupkg --source "https://nuget.pkg.github.com/alifcapital/index.json" --api-key ${{ secrets.EVENTBUS_RABBITMQ_SECRET }}
+        run: dotnet nuget push ./nupkgs/*.nupkg --source "https://nuget.pkg.github.com/alifcapital/index.json"
