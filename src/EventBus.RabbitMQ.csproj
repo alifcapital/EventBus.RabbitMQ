@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Title>EventBus.RabbitMQ</Title>
         <Authors>MirolimMajidov</Authors>
@@ -14,18 +14,18 @@
         <NeutralLanguage>en</NeutralLanguage>
         <PackageId>AlifCapital.EventBus.RabbitMQ</PackageId>
         <AssemblyName>AlifCapital.EventBus.RabbitMQ</AssemblyName>
-        <Version>8.0.57</Version>
+        <Version>9.0.0</Version>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="AlifCapital.EventStorage" Version="1.0.21" />
-        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.1" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.1" />
-        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
-        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
-        <PackageReference Include="OpenTelemetry" Version="1.9.0" />
+        <PackageReference Include="AlifCapital.EventStorage" Version="9.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0"/>
+        <PackageReference Include="OpenTelemetry" Version="1.10.0" />
         <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />
-        <PackageReference Include="Polly" Version="8.4.1" />
+        <PackageReference Include="Polly" Version="8.5.0" />
     </ItemGroup>
 
     <ItemGroup>
