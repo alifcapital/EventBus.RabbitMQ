@@ -12,24 +12,13 @@ using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Publishers.Managers;
 
-internal class EventPublisherManager : IEventPublisherManager
+internal class EventPublisherManager(IServiceProvider serviceProvider) : IEventPublisherManager
 {
-    private readonly RabbitMqOptions _defaultSettings;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<EventPublisherManager> _logger;
-    private readonly Dictionary<string, EventPublisherOptions> _publishers;
-    private readonly Dictionary<string, IRabbitMqConnection> _openedRabbitMqConnections;
-    private readonly IRabbitMqConnectionCreator _rabbitMqConnectionCreator;
-
-    public EventPublisherManager(IServiceProvider serviceProvider)
-    {
-        _serviceProvider = serviceProvider;
-        _defaultSettings = serviceProvider.GetRequiredService<RabbitMqOptions>();
-        _logger = serviceProvider.GetRequiredService<ILogger<EventPublisherManager>>();
-        _publishers = new();
-        _openedRabbitMqConnections = new();
-        _rabbitMqConnectionCreator = serviceProvider.GetRequiredService<IRabbitMqConnectionCreator>();
-    }
+    private readonly RabbitMqOptions _defaultSettings = serviceProvider.GetRequiredService<RabbitMqOptions>();
+    private readonly ILogger<EventPublisherManager> _logger = serviceProvider.GetRequiredService<ILogger<EventPublisherManager>>();
+    private readonly Dictionary<string, EventPublisherOptions> _publishers = new();
+    private readonly Dictionary<string, IRabbitMqConnection> _openedRabbitMqConnections = new();
+    private readonly IRabbitMqConnectionCreator _rabbitMqConnectionCreator = serviceProvider.GetRequiredService<IRabbitMqConnectionCreator>();
 
     /// <summary>
     /// Registers a publisher.
@@ -84,7 +73,7 @@ internal class EventPublisherManager : IEventPublisherManager
         var connectionId = $"{settings.VirtualHostSettings.VirtualHost}-{settings.VirtualHostSettings.ExchangeName}";
         if (!_openedRabbitMqConnections.TryGetValue(connectionId, out var connection))
         {
-            connection = _rabbitMqConnectionCreator.CreateConnection(settings, _serviceProvider);
+            connection = _rabbitMqConnectionCreator.CreateConnection(settings, serviceProvider);
             _openedRabbitMqConnections.Add(connectionId, connection);
         }
 
