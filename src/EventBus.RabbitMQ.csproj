@@ -14,7 +14,7 @@
         <NeutralLanguage>en</NeutralLanguage>
         <PackageId>AlifCapital.EventBus.RabbitMQ</PackageId>
         <AssemblyName>AlifCapital.EventBus.RabbitMQ</AssemblyName>
-        <Version>8.0.56</Version>
+        <Version>8.0.57</Version>
     </PropertyGroup>
 
     <ItemGroup>
