@@ -112,7 +112,7 @@ internal class EventConsumerService : IEventConsumerService
                     "----- ERROR while reading the headers of '{EventType}' event type with the '{RoutingKey}' routing key and '{EventId}' event id. {EventPayload}, {Headers}.",
                     eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId, eventPayloadData, eventHeadersData);
 
-                throw;
+                return;
             }
 
             headers.TryGetValue(EventBusTraceInstrumentation.TraceParentIdKey, out string traceParentId);
