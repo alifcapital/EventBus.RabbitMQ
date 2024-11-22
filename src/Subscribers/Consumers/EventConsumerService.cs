@@ -66,7 +66,8 @@ internal class EventConsumerService : IEventConsumerService
 
         var channel = _connection.CreateChannel();
 
-        channel.ExchangeDeclare(exchange: _connectionOptions.VirtualHostSettings.ExchangeName, type: _connectionOptions.VirtualHostSettings.ExchangeType,
+        channel.ExchangeDeclare(exchange: _connectionOptions.VirtualHostSettings.ExchangeName,
+            type: _connectionOptions.VirtualHostSettings.ExchangeType,
             durable: true, autoDelete: false);
         channel.QueueDeclare(_connectionOptions.QueueName, durable: true, exclusive: false, autoDelete: false,
             _connectionOptions.VirtualHostSettings.QueueArguments);
@@ -96,18 +97,35 @@ internal class EventConsumerService : IEventConsumerService
         var eventType = eventArgs.BasicProperties.Type ?? eventArgs.RoutingKey;
         try
         {
-            var headers = GetEventHeaders();
-            headers.TryGetValue(EventBusTraceInstrumentation.TraceParentIdKey, out string traceParentId);
-        
-            using var activity = EventBusTraceInstrumentation.StartActivity($"Received '{eventType}' event", ActivityKind.Consumer, traceParentId);
-
             var eventPayload = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
-            if(EventBusTraceInstrumentation.ShouldAttachEventPayload)
-                activity?.AddEvent(new ($"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}"));
-            
+
+            Dictionary<string, string> headers;
+            try
+            {
+                headers = GetEventHeaders();
+            }
+            catch (Exception e)
+            {
+                var eventPayloadData = $"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}";
+                var eventHeadersData = $"{EventBusTraceInstrumentation.EventHeadersTag}: {SerializeData(eventArgs.BasicProperties.Headers)}";
+                _logger.LogError(e,
+                    "----- ERROR while reading the headers of '{EventType}' event type with the '{RoutingKey}' routing key and '{EventId}' event id. {EventPayload}, {Headers}.",
+                    eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId, eventPayloadData, eventHeadersData);
+
+                throw;
+            }
+
+            headers.TryGetValue(EventBusTraceInstrumentation.TraceParentIdKey, out string traceParentId);
+
+            using var activity = EventBusTraceInstrumentation.StartActivity($"Received '{eventType}' event",
+                ActivityKind.Consumer, traceParentId);
+
+            if (EventBusTraceInstrumentation.ShouldAttachEventPayload)
+                activity?.AddEvent(new($"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}"));
+
             string headersAsJson = SerializeData(headers);
-            if(EventBusTraceInstrumentation.ShouldAttachEventHeaders)
-                activity?.AddEvent(new ($"{EventBusTraceInstrumentation.EventHeadersTag}: {headersAsJson}"));
+            if (EventBusTraceInstrumentation.ShouldAttachEventHeaders)
+                activity?.AddEvent(new($"{EventBusTraceInstrumentation.EventHeadersTag}: {headersAsJson}"));
 
             if (_subscribers.TryGetValue(eventType,
                     out (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings) info))
@@ -117,9 +135,11 @@ internal class EventConsumerService : IEventConsumerService
                 var jsonSerializerSetting = info.eventSettings.GetJsonSerializer();
                 var receivedEvent =
                     JsonSerializer.Deserialize(eventPayload, info.eventType, jsonSerializerSetting) as ISubscribeEvent;
-               
-                receivedEvent!.EventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out Guid messageId) ? messageId : Guid.NewGuid();
-                
+
+                receivedEvent!.EventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out Guid messageId)
+                    ? messageId
+                    : Guid.NewGuid();
+
                 using var scope = _serviceProvider.CreateScope();
                 if (_useInbox)
                 {
