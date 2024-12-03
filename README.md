@@ -292,7 +292,7 @@ While publishing or subscribing an event by default uses the Name of event Type/
     }
   }
 ```
-Keep in mind, the `EventTypeName` and `EventNamingPolicy` options are optional, and if you don't pass it, it will use the event name automatically. But if you pass the `EventTypeName`, it will use that name as the event type even if the `EventNamingPolicy` is set.
+Keep in mind, the `EventTypeName` and `EventNamingPolicy` options are optional, and if you don't pass it, it will use the event name automatically. But if you pass the `EventTypeName`, it will use that name as the event type name even if the `EventNamingPolicy` is set.
 
 #### What if I want to subscribe to an event from another system that doesn't publish an event type?
 When RabbitMQ receives an event from a `Consumer`, it tries to read the event type from the received event, if it can't find it, it uses the `routing key` instead to find the event subscriber.
