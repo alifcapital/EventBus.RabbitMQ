@@ -168,6 +168,8 @@ First you need to add a new section called `RabbitMQSettings` to your configurat
       "QueueName": "users_queue",
       "RoutingKey": "users.created",
       "RetryConnectionCount": 5,
+      "EventNamingPolicy": "SnakeCaseLower",
+      "PropertyNamingPolicy": "CamelCase",
       "QueueArguments": {
         "x-queue-type": "quorum"
       }
@@ -201,7 +203,8 @@ First you need to add a new section called `RabbitMQSettings` to your configurat
       },
       "payments": {
         "ExchangeName": "payments_exchange",
-        "VirtualHost": "payments"
+        "VirtualHost": "payments",
+        "EventNamingPolicy": "KebabCaseUpper",
       }
     }
   }
@@ -261,22 +264,22 @@ Yes, we can. For that we need to just enable the using the TLS protocol by addin
 By default, the `UseTls` option is set to `false`. If you want to use the TLS protocol, you need to set it to `true`. The `SslProtocolVersion` option is optional, and by default, it uses the `Tls` protocol, but when we run the application in the K8s, it requires to use the `Tls12` protocol. The `ClientCertPath` and `ClientKeyPath` options are required if you want to use the TLS protocol.
 
 #### Customizing the event type of publishing/subscribing event:
-While publishing or subscribing an event by default it uses the Name of event structure. For example, if you add an event named `UserUpdated`, while publishing or subscribing/receiving that `UserUpdated` name as event type will be used. But if you want you can overwrite the event type by added event type name to the config file:
+While publishing or subscribing an event by default uses the Name of event Type/Structure and convert it to the selected EventNamingPolicy (By default it is PascalCase).  For example, if you add an event named `UserUpdated`, while publishing or subscribing/receiving that `UserUpdated` name as event type will be used. But if you want, you can overwrite the event type by specifying the EventNamingPolicy or added event type name to the config file:
 ```
 "RabbitMQSettings": {
     "DefaultSettings": {
       //your settings
+      "EventNamingPolicy": "SnakeCaseLower",
     },
     "Publishers": {
       "UserUpdated": {
-        "RoutingKey": "users.updated",
+        "VirtualHostKey": "users",
         "EventTypeName": "UserUpdatedEvent"
       }
     },
     "Subscribers": {
       "UserDeleted": {
-        //your settings
-        "EventTypeName": "MyUserDeletedEvent"
+        "VirtualHostKey": "users",
         "QueueName": "deleted_users_queue",
       }
     },
@@ -284,13 +287,45 @@ While publishing or subscribing an event by default it uses the Name of event st
       "users": {
         "ExchangeName": "users_exchange",
         "QueueName": "users_queue",
+        "EventNamingPolicy": "KebabCaseLower",
       }
     }
   }
 ```
+Keep in mind, the `EventTypeName` and `EventNamingPolicy` options are optional, and if you don't pass it, it will use the event name automatically. But if you 
+
 
 #### What if I want to subscribe to an event from another system that doesn't publish an event type?
 When RabbitMQ receives an event from a `Consumer`, it tries to read the event type from the received event, if it can't find it, it uses the `routing key` instead to find the event subscriber.
+
+### Changing a naming police for serializing and deserializing properties of Event
+
+By default, while serializing and deserializing properties of event, it will use the `PascalCase`, but you can also use `CamelCase`, `SnakeCaseLower`, `SnakeCaseUpper`, `KebabCaseLower`, or `KebabCaseUpper` if you want. For this you need to add `PropertyNamingPolicy` option to `RabbitMQSettings` section if you want to apply it for all publishers or subscribers, or you can use/overwrite it from the specific a virtual host, or use/overwrite it from the publisher or subscriber event too. Example:
+```
+"RabbitMQSettings": {
+    "DefaultSettings": {
+      //your settings
+      "PropertyNamingPolicy": "KebabCaseLower"
+    },
+    "Publishers": {
+      "PaymentCreated": {
+        //your settings
+        "PropertyNamingPolicy": "SnakeCaseUpper"
+      }
+    },
+    "Subscribers": {
+      "UserDeleted": {
+        //your settings
+        "PropertyNamingPolicy": "CamelCase"
+      }
+    },
+    "VirtualHostSettings": {
+      "users": {
+        "PropertyNamingPolicy": "KebabCaseUpper"
+      }
+    }
+  }
+```
 
 ### Advanced configuration of publishers and subscribers while registering to the DI services.
 
@@ -356,35 +391,6 @@ public async Task Receive(UserCreated @event)
 
     return Task.CompletedTask;
 }
-```
-
-### Changing a naming police for serializing and deserializing properties of Event
-
-By default, while serializing and deserializing properties of event, it will use the `PascalCase`, but you can also use `CamelCase`, `SnakeCaseLower`, `SnakeCaseUpper`, `KebabCaseLower`, or `KebabCaseUpper` if you want. For this you need to add `PropertyNamingPolicy` option to `RabbitMQSettings` section if you want to apply it for all publishers or subscribers, or you can use/overwrite it from the specific a virtual host, or use/overwrite it from the publisher or subscriber event too. Example:
-```
-"RabbitMQSettings": {
-    "DefaultSettings": {
-      //your settings
-      "PropertyNamingPolicy": "KebabCaseLower"
-    },
-    "Publishers": {
-      "PaymentCreated": {
-        //your settings
-        "PropertyNamingPolicy": "SnakeCaseUpper"
-      }
-    },
-    "Subscribers": {
-      "UserDeleted": {
-        //your settings
-        "PropertyNamingPolicy": "CamelCase"
-      }
-    },
-    "VirtualHostSettings": {
-      "users": {
-        "PropertyNamingPolicy": "KebabCaseUpper"
-      }
-    }
-  }
 ```
 
 ### Setting up the Inbox and Outbox patterns in this library

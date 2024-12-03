@@ -115,17 +115,17 @@ internal class EventConsumerService : IEventConsumerService
                 return;
             }
 
-            headers.TryGetValue(EventBusTraceInstrumentation.TraceParentIdKey, out string traceParentId);
+            headers.TryGetValue(EventBusTraceInstrumentation.TraceParentIdKey, out var traceParentId);
 
             using var activity = EventBusTraceInstrumentation.StartActivity($"Received '{eventType}' event",
                 ActivityKind.Consumer, traceParentId);
 
             if (EventBusTraceInstrumentation.ShouldAttachEventPayload)
-                activity?.AddEvent(new($"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}"));
+                activity?.AddEvent(new ActivityEvent($"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}"));
 
-            string headersAsJson = SerializeData(headers);
+            var headersAsJson = SerializeData(headers);
             if (EventBusTraceInstrumentation.ShouldAttachEventHeaders)
-                activity?.AddEvent(new($"{EventBusTraceInstrumentation.EventHeadersTag}: {headersAsJson}"));
+                activity?.AddEvent(new ActivityEvent($"{EventBusTraceInstrumentation.EventHeadersTag}: {headersAsJson}"));
 
             if (_subscribers.TryGetValue(eventType,
                     out (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings) info))

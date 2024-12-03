@@ -80,7 +80,8 @@ internal static class RabbitMqOptionsConstant
             ExchangeName = ExchangeName,
             ExchangeType = ExchangeType,
             RetryConnectionCount = RetryConnectionCount,
-            PropertyNamingPolicy = PropertyNamingPolicyType.PascalCase,
+            PropertyNamingPolicy = NamingPolicyType.PascalCase,
+            EventNamingPolicy = NamingPolicyType.PascalCase,
             UseTls = UseTls,
             SslProtocolVersion = SslProtocolVersion
         };
