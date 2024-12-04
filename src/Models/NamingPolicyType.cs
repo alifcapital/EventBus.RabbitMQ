@@ -1,6 +1,6 @@
 namespace EventBus.RabbitMQ.Models;
 
-public enum PropertyNamingPolicyType
+public enum NamingPolicyType
 {
     PascalCase,
     CamelCase,

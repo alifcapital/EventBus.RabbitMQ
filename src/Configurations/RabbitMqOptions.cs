@@ -1,3 +1,4 @@
+
 namespace EventBus.RabbitMQ.Configurations;
 
 public class RabbitMqOptions : RabbitMqHostSettings

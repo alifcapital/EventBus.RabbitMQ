@@ -25,7 +25,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     public void Setup()
     {
         var rabbitMqOptions = RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions();
-        _settings = new EventSubscriberOptions()
+        _settings = new EventSubscriberOptions
         {
             EventTypeName = nameof(SimpleSubscribeEvent),
             QueueName = "test-queue",
@@ -49,28 +49,25 @@ public class EventConsumerServiceTests : BaseTestEntity
     [Test]
     public void AddSubscriber_WithOptionsQueueName_ShouldAddSubscriber()
     {
-        // Arrange
+        var queueName = "test-queue";
         var settings = new EventSubscriberOptions
         {
             EventTypeName = nameof(SimpleSubscribeEvent),
-            QueueName = "test-queue",
+            QueueName = queueName,
         };
-
         var eventInfo = (typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), settings);
 
-        // Act
         _consumerService.AddSubscriber(eventInfo);
 
-        // Assert
         var field = _consumerService.GetType()
             .GetField("_subscribers", BindingFlags.NonPublic | BindingFlags.Instance);
         field.Should().NotBeNull();
+        
         var subscribers =
             (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
             field?.GetValue(_consumerService)!;
-
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers?.First().Value.eventSettings.QueueName.Should().Be("test-queue");
+        subscribers?.First().Value.eventSettings.QueueName.Should().Be(queueName);
     }
 
     #endregion
@@ -80,10 +77,8 @@ public class EventConsumerServiceTests : BaseTestEntity
     [Test]
     public void StartAndSubscribeReceiver_StartingConsumerWithDefaultSetting_ShouldCreateConsumer()
     {
-        // Act
         _consumerService.StartAndSubscribeReceiver();
 
-        // Assert
         var field = _consumerService.GetType()
             .GetField("_consumerChannel", BindingFlags.NonPublic | BindingFlags.Instance);
         field.Should().NotBeNull();

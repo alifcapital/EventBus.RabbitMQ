@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Security.Authentication;
+using System.Text.Json;
 using EventBus.RabbitMQ.Models;
 
 namespace EventBus.RabbitMQ.Configurations;
@@ -67,7 +68,12 @@ public class RabbitMqHostSettings
     /// <summary>
     /// Naming police for serializing and deserializing properties of Event. Default value is "PascalCase". It can be one of "PascalCase", "CamelCase", "SnakeCaseLower", "SnakeCaseUpper", "KebabCaseLower", or "KebabCaseUpper".
     /// </summary>
-    public PropertyNamingPolicyType? PropertyNamingPolicy { get; init; }
+    public NamingPolicyType? PropertyNamingPolicy { get; init; }
+
+    /// <summary>
+    /// Naming police for serializing and deserializing the name of Event. Default value is "PascalCase". It can be one of "PascalCase", "CamelCase", "SnakeCaseLower", "SnakeCaseUpper", "KebabCaseLower", or "KebabCaseUpper".
+    /// </summary>
+    public NamingPolicyType? EventNamingPolicy { get; init; } 
 
     /// <summary>
     /// Indicates whether TLS/SSL should be used for the connection. When set to true, the connection will be secured using TLS/SSL.
@@ -133,4 +139,63 @@ public class RabbitMqHostSettings
             return propertyInfo?.GetValue(this);
         }
     }
+    
+    /// <summary>
+    /// Gets the correct event name based on naming policy
+    /// </summary>
+    /// <param name="eventName">The event name to convert</param>
+    /// <returns>Converted name to use it for publishing or receiving event</returns>
+    internal string GetCorrectEventNameBasedOnNamingPolicy(string eventName)
+    {
+        if (string.IsNullOrEmpty(eventName))
+            return eventName;
+
+        var eventNamingPolicy = GetEventNamingPolicy();
+        if (eventNamingPolicy is null)
+            return eventName;
+
+        return eventNamingPolicy.ConvertName(eventName);
+    }
+
+    #region Helper methods
+
+    private JsonNamingPolicy _eventNamingPolicy;
+    private bool _isEventNamingPolicyInitialized;
+    
+    /// <summary>
+    /// Gets JsonNamingPolicy to use on naming police for serializing and deserializing the name of Event 
+    /// </summary>
+    internal JsonNamingPolicy GetEventNamingPolicy()
+    {
+        if (_isEventNamingPolicyInitialized)
+            return _eventNamingPolicy;
+
+        switch (EventNamingPolicy)
+        {
+            case NamingPolicyType.CamelCase:
+                _eventNamingPolicy = JsonNamingPolicy.CamelCase;
+                break;
+            case NamingPolicyType.SnakeCaseLower:
+                _eventNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+                break;
+            case NamingPolicyType.SnakeCaseUpper:
+                _eventNamingPolicy = JsonNamingPolicy.SnakeCaseUpper;
+                break;
+            case NamingPolicyType.KebabCaseLower:
+                _eventNamingPolicy = JsonNamingPolicy.KebabCaseLower;
+                break;
+            case NamingPolicyType.KebabCaseUpper:
+                _eventNamingPolicy = JsonNamingPolicy.KebabCaseUpper;
+                break;
+            default:
+                _eventNamingPolicy = null;
+                break;
+        }
+        
+        _isEventNamingPolicyInitialized = true;
+
+        return _eventNamingPolicy;
+    }
+
+    #endregion
 }
