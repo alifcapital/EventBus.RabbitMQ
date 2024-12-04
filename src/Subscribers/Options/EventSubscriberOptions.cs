@@ -12,8 +12,16 @@ public class EventSubscriberOptions : BaseEventOptions
     internal override void SetVirtualHostAndUnassignedSettings(RabbitMqHostSettings settings, string eventTypeName)
     {
         base.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
-        
+
+        QueueNameIfEmpty();
+    }
+
+    /// <summary>
+    /// If the queue name is empty, it will use the queue name from the virtual host settings. If that also is empty, then use the exchange name as default value.
+    /// </summary>
+    private void QueueNameIfEmpty()
+    {
         if (string.IsNullOrEmpty(QueueName))
-            QueueName = string.IsNullOrEmpty(settings.QueueName) ? settings.ExchangeName : settings.QueueName;
+            QueueName = string.IsNullOrEmpty(VirtualHostSettings.QueueName) ? VirtualHostSettings.ExchangeName : VirtualHostSettings.QueueName;
     }
 }
