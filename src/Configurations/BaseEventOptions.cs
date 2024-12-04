@@ -44,8 +44,8 @@ public abstract class BaseEventOptions
         VirtualHostSettings = settings;
         PropertyNamingPolicy ??= settings.PropertyNamingPolicy;
 
-        SetEventTypeNameIfIsNotAssigned(eventTypeName);
-        CalculatorAndSetRoutingKeyIfIsNotAssigned();
+        SetEventTypeNameIfEmpty(eventTypeName);
+        SetRoutingKeyIfEmpty();
     }
 
     private JsonSerializerOptions _jsonSerializerOptions;
@@ -89,7 +89,7 @@ public abstract class BaseEventOptions
     /// <summary>
     /// The routing key to use for message routing in RabbitMQ. If it is empty, it will use the virtual host settings' RoutingKey, If that also is empty, then use the "{ExchangeName}.{EventTypeName}" as default value.
     /// </summary>
-    private void CalculatorAndSetRoutingKeyIfIsNotAssigned()
+    private void SetRoutingKeyIfEmpty()
     {
         if (string.IsNullOrEmpty(RoutingKey))
             RoutingKey = string.IsNullOrEmpty(VirtualHostSettings.RoutingKey)
@@ -101,7 +101,7 @@ public abstract class BaseEventOptions
     /// If the event type name is not assigned, it will be generated based on the event naming policy and set it.
     /// </summary>
     /// <param name="eventTypeName">The type name of event</param>
-    private void SetEventTypeNameIfIsNotAssigned(string eventTypeName)
+    private void SetEventTypeNameIfEmpty(string eventTypeName)
     {
         if (string.IsNullOrEmpty(EventTypeName))
             EventTypeName = VirtualHostSettings.GetCorrectEventNameBasedOnNamingPolicy(eventTypeName);
