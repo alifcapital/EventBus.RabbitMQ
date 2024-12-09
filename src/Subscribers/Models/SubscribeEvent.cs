@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using EventStorage.Models;
 
 namespace EventBus.RabbitMQ.Subscribers.Models;
 
@@ -8,6 +9,12 @@ namespace EventBus.RabbitMQ.Subscribers.Models;
 public abstract record SubscribeEvent : ISubscribeEvent
 {
     public Guid EventId { get; set; }
+    
+    Guid IEvent.EventId
+    {
+        get => EventId;
+        init => EventId = value;
+    }
 
     public DateTime CreatedAt { get; init; }
 

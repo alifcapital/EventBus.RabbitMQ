@@ -10,5 +10,5 @@ public interface IBaseEvent : IEvent, IHasHeaders
     /// <summary>
     /// Created time of event
     /// </summary>
-    public DateTime CreatedAt { get; }
+    public DateTime CreatedAt { get; init; }
 }

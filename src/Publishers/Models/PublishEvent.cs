@@ -13,9 +13,9 @@ public abstract record PublishEvent : IPublishEvent
         CreatedAt = DateTime.Now;
     }
 
-    public Guid EventId { get; }
+    public Guid EventId { get; init; }
 
-    public DateTime CreatedAt { get; }
+    public DateTime CreatedAt { get; init; }
 
     [JsonIgnore]
     public Dictionary<string, string> Headers { get; set; }
