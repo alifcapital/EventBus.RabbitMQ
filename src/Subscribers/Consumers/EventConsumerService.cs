@@ -107,10 +107,12 @@ internal class EventConsumerService : IEventConsumerService
             catch (Exception e)
             {
                 var eventPayloadData = $"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}";
-                var eventHeadersData = $"{EventBusTraceInstrumentation.EventHeadersTag}: {SerializeData(eventArgs.BasicProperties.Headers)}";
+                var eventHeadersData =
+                    $"{EventBusTraceInstrumentation.EventHeadersTag}: {SerializeData(eventArgs.BasicProperties.Headers)}";
                 _logger.LogError(e,
                     "----- ERROR while reading the headers of '{EventType}' event type with the '{RoutingKey}' routing key and '{EventId}' event id. {EventPayload}, {Headers}.",
-                    eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId, eventPayloadData, eventHeadersData);
+                    eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId, eventPayloadData,
+                    eventHeadersData);
 
                 return;
             }
@@ -121,11 +123,13 @@ internal class EventConsumerService : IEventConsumerService
                 ActivityKind.Consumer, traceParentId);
 
             if (EventBusTraceInstrumentation.ShouldAttachEventPayload)
-                activity?.AddEvent(new ActivityEvent($"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}"));
+                activity?.AddEvent(
+                    new ActivityEvent($"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}"));
 
             var headersAsJson = SerializeData(headers);
             if (EventBusTraceInstrumentation.ShouldAttachEventHeaders)
-                activity?.AddEvent(new ActivityEvent($"{EventBusTraceInstrumentation.EventHeadersTag}: {headersAsJson}"));
+                activity?.AddEvent(
+                    new ActivityEvent($"{EventBusTraceInstrumentation.EventHeadersTag}: {headersAsJson}"));
 
             if (_subscribers.TryGetValue(eventType,
                     out (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings) info))
@@ -180,6 +184,8 @@ internal class EventConsumerService : IEventConsumerService
                 eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId);
         }
 
+        #region Helper methods
+        
         void MarkEventIsDelivered()
         {
             _consumerChannel.BasicAck(eventArgs.DeliveryTag, multiple: false);
@@ -197,12 +203,14 @@ internal class EventConsumerService : IEventConsumerService
             {
                 foreach (var header in eventArgs.BasicProperties.Headers)
                 {
-                    var headerValue = Encoding.UTF8.GetString((byte[])header.Value);
+                    var headerValue = header.Value is null ? null : Encoding.UTF8.GetString((byte[])header.Value);
                     eventHeaders.Add(header.Key, headerValue);
                 }
             }
 
             return eventHeaders;
         }
+
+        #endregion
     }
 }
