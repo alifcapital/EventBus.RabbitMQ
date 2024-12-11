@@ -147,7 +147,9 @@ internal class EventPublisherManager(IServiceProvider serviceProvider) : IEventP
             
             var headers = new Dictionary<string, object>();
             properties.Headers = headers;
-            headers.Add(EventBusTraceInstrumentation.TraceParentIdKey, activity?.Id);
+            if(activity is not null)
+                headers.Add(EventBusTraceInstrumentation.TraceParentIdKey, activity.Id);
+            
             if (@event.Headers?.Any() == true)
             {
                 foreach (var item in @event.Headers)
