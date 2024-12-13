@@ -1,5 +1,5 @@
 using System.Security.Authentication;
-using EventBus.RabbitMQ.Models;
+using EventStorage.Models;
 
 namespace EventBus.RabbitMQ.Configurations;
 

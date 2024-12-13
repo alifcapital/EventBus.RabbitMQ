@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Security.Authentication;
 using System.Text.Json;
-using EventBus.RabbitMQ.Models;
+using EventStorage.Models;
 
 namespace EventBus.RabbitMQ.Configurations;
 
@@ -165,32 +165,13 @@ public class RabbitMqHostSettings
     /// <summary>
     /// Gets JsonNamingPolicy to use on naming police for serializing and deserializing the name of Event 
     /// </summary>
-    internal JsonNamingPolicy GetEventNamingPolicy()
+    private JsonNamingPolicy GetEventNamingPolicy()
     {
         if (_isEventNamingPolicyInitialized)
             return _eventNamingPolicy;
 
-        switch (EventNamingPolicy)
-        {
-            case NamingPolicyType.CamelCase:
-                _eventNamingPolicy = JsonNamingPolicy.CamelCase;
-                break;
-            case NamingPolicyType.SnakeCaseLower:
-                _eventNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
-                break;
-            case NamingPolicyType.SnakeCaseUpper:
-                _eventNamingPolicy = JsonNamingPolicy.SnakeCaseUpper;
-                break;
-            case NamingPolicyType.KebabCaseLower:
-                _eventNamingPolicy = JsonNamingPolicy.KebabCaseLower;
-                break;
-            case NamingPolicyType.KebabCaseUpper:
-                _eventNamingPolicy = JsonNamingPolicy.KebabCaseUpper;
-                break;
-            default:
-                _eventNamingPolicy = null;
-                break;
-        }
+        var eventNamingPolicyType = EventNamingPolicy ?? NamingPolicyType.PascalCase;
+        _eventNamingPolicy = NamingPolicyTypeNames.GetEventNamingPolicy(eventNamingPolicyType.ToString());
         
         _isEventNamingPolicyInitialized = true;
 
