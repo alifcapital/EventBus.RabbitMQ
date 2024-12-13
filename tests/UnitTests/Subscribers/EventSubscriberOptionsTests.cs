@@ -1,6 +1,6 @@
 ﻿using EventBus.RabbitMQ.Configurations;
-using EventBus.RabbitMQ.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
+using EventStorage.Models;
 using FluentAssertions;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Subscribers;

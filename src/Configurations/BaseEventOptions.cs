@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using EventBus.RabbitMQ.Models;
+using EventStorage.Models;
 
 namespace EventBus.RabbitMQ.Configurations;
 
