@@ -100,18 +100,15 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
     /// </summary>
     /// <param name="event">Executing an event</param>
     /// <param name="virtualHostName">The name of virtual host to being able to get a system name that the event published by it.</param>
-    public static void OnExecutingSubscribedEvent(ISubscribeEvent @event, string virtualHostName)
+    /// <param name="serviceProvider">The IServiceProvider used to resolve dependencies from the scope.</param>
+    public static void OnExecutingSubscribedEvent(ISubscribeEvent @event, string virtualHostName, 
+        IServiceProvider serviceProvider)
     {
         if (ExecutingSubscribedEvent is null)
             return;
 
         var systemName = virtualHostName.TrimStart('/');
-        var eventArgs = new SubscribedMessageBrokerEventArgs
-        {
-            Event = @event,
-            SystemName = systemName
-        };
-
+        var eventArgs = new SubscribedMessageBrokerEventArgs(@event, systemName, serviceProvider);
         ExecutingSubscribedEvent.Invoke(null, eventArgs);
     }
 
@@ -130,7 +127,7 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
                 ? info.eventSettings.VirtualHostSettings.VirtualHost
                 : string.Empty;
 
-            OnExecutingSubscribedEvent(@event, virtualHostName);
+            OnExecutingSubscribedEvent(@event, virtualHostName, e.ServiceProvider);
         }
     }
 }
