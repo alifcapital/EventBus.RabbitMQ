@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Instrumentation.Trace;
+using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventStorage.Exceptions;
@@ -138,7 +139,8 @@ internal class EventConsumerService : IEventConsumerService
                 _logger.LogTrace("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}", eventType,
                     eventArgs.BasicProperties.MessageId);
                 var eventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out Guid messageId)
-                    ? messageId : Guid.NewGuid();
+                    ? messageId
+                    : Guid.NewGuid();
 
                 using var scope = _serviceProvider.CreateScope();
                 if (_useInbox)
@@ -150,16 +152,21 @@ internal class EventConsumerService : IEventConsumerService
                             $"The RabbitMQ is configured to use the Inbox for received events, but the Inbox functionality of the EventStorage is not enabled. So, the {info.eventHandlerType.Name} event subscriber of an event will be executed immediately for the event id: {eventId};");
 
                     _ = eventReceiverManager.Received(eventId, info.eventType.Name, eventArgs.RoutingKey,
-                        EventProviderType.MessageBroker, payload: eventPayload, headers: headersAsJson, namingPolicyType: info.eventSettings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase);
+                        EventProviderType.MessageBroker, payload: eventPayload, headers: headersAsJson,
+                        namingPolicyType: info.eventSettings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase);
                 }
                 else
                 {
                     var jsonSerializerSetting = info.eventSettings.GetJsonSerializer();
                     var receivedEvent =
-                        JsonSerializer.Deserialize(eventPayload, info.eventType, jsonSerializerSetting) as ISubscribeEvent;
+                        JsonSerializer.Deserialize(eventPayload, info.eventType, jsonSerializerSetting) as
+                            ISubscribeEvent;
 
                     receivedEvent!.EventId = eventId;
                     receivedEvent!.Headers = headers;
+
+                    EventSubscriberManager.OnExecutingSubscribedEvent(receivedEvent, _connectionOptions.VirtualHostSettings.VirtualHost);
+
                     var eventHandlerSubscriber = scope.ServiceProvider.GetRequiredService(info.eventHandlerType);
                     var handleMethod = info.eventHandlerType.GetMethod(HandlerMethodName);
                     await ((Task)handleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;

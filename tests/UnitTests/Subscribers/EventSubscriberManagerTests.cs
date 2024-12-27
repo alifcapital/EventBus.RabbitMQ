@@ -33,17 +33,9 @@ public class EventSubscriberManagerTests : BaseTestEntity
     {
         var options = new Action<EventSubscriberOptions>(x => { x.QueueName = "TestQueue"; });
 
-        // Act
         _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
 
-        // Assert
-        var field = _subscriberManager.GetType()
-            .GetField("_subscribers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var subscribers =
-            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
-            field?.GetValue(_subscriberManager)!;
-
+        var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
         subscribers!.First().Value.eventSettings.QueueName.Should().Be("TestQueue");
     }
@@ -53,21 +45,13 @@ public class EventSubscriberManagerTests : BaseTestEntity
     {
         var options = new Action<EventSubscriberOptions>(x => { x.QueueName = "TestQueue"; });
 
-        // Act
         _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
         _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(x =>
         {
             x.QueueName = "TestQueueUpdated";
         });
 
-        // Assert
-        var field = _subscriberManager.GetType()
-            .GetField("_subscribers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var subscribers =
-            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
-            field?.GetValue(_subscriberManager)!;
-
+        var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
         subscribers!.First().Value.eventSettings.QueueName.Should().Be("TestQueueUpdated");
     }
@@ -80,17 +64,9 @@ public class EventSubscriberManagerTests : BaseTestEntity
             QueueName = "TestQueue",
         };
 
-        // Act
         _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), options);
 
-        // Assert
-        var field = _subscriberManager.GetType()
-            .GetField("_subscribers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var subscribers =
-            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
-            field?.GetValue(_subscriberManager)!;
-
+        var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
         subscribers!.First().Value.eventSettings.QueueName.Should().Be("TestQueue");
     }
@@ -103,7 +79,6 @@ public class EventSubscriberManagerTests : BaseTestEntity
             QueueName = "TestQueue",
         };
 
-        // Act
         _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), options);
         _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler),
             new EventSubscriberOptions
@@ -111,14 +86,7 @@ public class EventSubscriberManagerTests : BaseTestEntity
                 QueueName = "TestQueueUpdated"
             });
 
-        // Assert
-        var field = _subscriberManager.GetType()
-            .GetField("_subscribers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var subscribers =
-            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
-            field?.GetValue(_subscriberManager)!;
-
+        var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
         subscribers!.First().Value.eventSettings.QueueName.Should().Be("TestQueueUpdated");
     }
@@ -126,18 +94,10 @@ public class EventSubscriberManagerTests : BaseTestEntity
     [Test]
     public void AddSubscriber_CallingWithTypesAndWithDefaultSettings_ShouldAdded()
     {
-        // Act
         _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler),
             new EventSubscriberOptions());
-
-        // Assert
-        var field = _subscriberManager.GetType()
-            .GetField("_subscribers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var subscribers =
-            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
-            field?.GetValue(_subscriberManager)!;
-
+        
+        var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
         subscribers!.First().Value.eventSettings.QueueName.Should().BeNull();
     }
@@ -161,20 +121,11 @@ public class EventSubscriberManagerTests : BaseTestEntity
         };
 
         var options = new Action<EventSubscriberOptions>(x => { x.VirtualHostKey = "TestVirtualHostKey"; });
-
         _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
 
-        // Act
         _subscriberManager.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
 
-        // Assert
-        var field = _subscriberManager.GetType()
-            .GetField("_subscribers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var subscribers =
-            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
-            field?.GetValue(_subscriberManager)!;
-
+        var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
         subscribers!.First().Value.eventSettings.VirtualHostSettings.VirtualHost.Should().Be("TestVirtualHost");
     }
@@ -186,7 +137,6 @@ public class EventSubscriberManagerTests : BaseTestEntity
     [Test]
     public void CreateConsumerForEachQueueAndStartReceivingEvents_WithSubscribers_ShouldCreateConsumer()
     {
-        // Arrange
         var options = new Action<EventSubscriberOptions>(x =>
         {
             x.VirtualHostKey = "TestVirtualHostKey";
@@ -218,10 +168,8 @@ public class EventSubscriberManagerTests : BaseTestEntity
         _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
         _subscriberManager.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
 
-        // Act
         _subscriberManager.CreateConsumerForEachQueueAndStartReceivingEvents();
 
-        // Assert
         var field = _subscriberManager.GetType()
             .GetField("_eventConsumers", BindingFlags.NonPublic | BindingFlags.Instance);
         field.Should().NotBeNull();
@@ -236,6 +184,23 @@ public class EventSubscriberManagerTests : BaseTestEntity
                 evInfo.eventSettings.QueueName == "TestQueue"
             )
         );
+    }
+
+    #endregion
+
+    #region Helper method
+
+    private static readonly FieldInfo SubscribersProperty = typeof(EventSubscriberManager)
+        .GetField("Subscribers", BindingFlags.NonPublic | BindingFlags.Static);
+    
+    Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)> GetSubscribers()
+    {
+        var eventSubscriberManager = typeof(EventSubscriberManager);
+        var subscribers =
+            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
+            SubscribersProperty?.GetValue(eventSubscriberManager)!;
+
+        return subscribers;
     }
 
     #endregion
