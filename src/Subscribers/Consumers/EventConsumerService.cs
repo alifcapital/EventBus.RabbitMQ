@@ -165,7 +165,7 @@ internal class EventConsumerService : IEventConsumerService
                     receivedEvent!.EventId = eventId;
                     receivedEvent!.Headers = headers;
 
-                    EventSubscriberManager.OnExecutingSubscribedEvent(receivedEvent, _connectionOptions.VirtualHostSettings.VirtualHost);
+                    EventSubscriberManager.OnExecutingSubscribedEvent(receivedEvent, _connectionOptions.VirtualHostSettings.VirtualHost, scope.ServiceProvider);
 
                     var eventHandlerSubscriber = scope.ServiceProvider.GetRequiredService(info.eventHandlerType);
                     var handleMethod = info.eventHandlerType.GetMethod(HandlerMethodName);
