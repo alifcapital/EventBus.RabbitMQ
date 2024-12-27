@@ -10,6 +10,7 @@ using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventStorage.Configurations;
 using EventStorage.Extensions;
+using EventStorage.Inbox.EventArgs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -28,19 +29,33 @@ public static class RabbitMqExtensions
     /// <param name="eventSubscriberManagerOptions">Options to register subscriber with the settings. It will overwrite existing subscriber setting if exists</param>
     /// <param name="eventStoreOptions">Options to overwrite default settings of Inbox and Outbox.</param>
     /// <param name="assemblies">Assemblies to find and load publisher and subscribers</param>
+    /// <param name="executingSubscribedEvent">The event for subscribing to the executing subscribed event of MessageBroker</param>
+    /// <param name="executingReceivedEvent">The event for subscribing to the executing received event of Inbox</param>
     public static void AddRabbitMqEventBus(this IServiceCollection services, IConfiguration configuration,
         Assembly[] assemblies,
         Action<RabbitMqOptions> defaultOptions = null,
         Action<Dictionary<string, RabbitMqHostSettings>> virtualHostSettingsOptions = null,
         Action<EventPublisherManagerOptions> eventPublisherManagerOptions = null,
         Action<EventSubscriberManagerOptions> eventSubscriberManagerOptions = null,
-        Action<InboxAndOutboxOptions> eventStoreOptions = null)
+        Action<InboxAndOutboxOptions> eventStoreOptions = null,
+        EventHandler<SubscribedMessageBrokerEventArgs> executingSubscribedEvent = null,
+        EventHandler<ReceivedEventArgs> executingReceivedEvent = null)
     {
-        services.AddEventStore(configuration, assemblies: assemblies, options: eventStoreOptions);
+        var eventsToSubscribe = new List<EventHandler<ReceivedEventArgs>>();
+        if (executingReceivedEvent is not null)
+            eventsToSubscribe.Add(executingReceivedEvent);
+        
+        if (executingSubscribedEvent is not null)
+        {
+            EventSubscriberManager.ExecutingSubscribedEvent += executingSubscribedEvent;
+            eventsToSubscribe.Add(EventSubscriberManager.HandleExecutingReceivedEvent);
+        }
+        services.AddEventStore(configuration, assemblies: assemblies, options: eventStoreOptions, executingReceivedEvents: eventsToSubscribe.ToArray());
 
         var settings = configuration.GetSection(nameof(RabbitMqSettings)).Get<RabbitMqSettings>() ??
                        new RabbitMqSettings();
         LoadDefaultRabbitMqOptions(settings, defaultOptions);
+        
         if (!settings.DefaultSettings.IsEnabled) return;
 
         services.AddSingleton(settings.DefaultSettings);
@@ -144,14 +159,15 @@ public static class RabbitMqExtensions
     /// </summary>
     /// <param name="settingsFromConfig">Main settings from configuration</param>
     /// <param name="defaultOptions">Settings option to overwrite the default settings</param>
-    private static void LoadDefaultRabbitMqOptions(RabbitMqSettings settingsFromConfig, Action<RabbitMqOptions> defaultOptions)
+    private static void LoadDefaultRabbitMqOptions(RabbitMqSettings settingsFromConfig,
+        Action<RabbitMqOptions> defaultOptions)
     {
         var defaultSettings = RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions();
         if (settingsFromConfig.DefaultSettings is null)
             settingsFromConfig.DefaultSettings = defaultSettings;
         else
             settingsFromConfig.DefaultSettings.CopyNotAssignedSettingsFrom(defaultSettings);
-        
+
         defaultOptions?.Invoke(settingsFromConfig.DefaultSettings);
     }
 
@@ -173,13 +189,14 @@ public static class RabbitMqExtensions
         }
     }
 
-    private static void RegisterAllSubscriberReceiversToDependencyInjection(IServiceCollection services, Assembly[] assemblies)
+    private static void RegisterAllSubscriberReceiversToDependencyInjection(IServiceCollection services,
+        Assembly[] assemblies)
     {
         var subscriberReceiverTypes = GetSubscriberReceiverTypes(assemblies);
         foreach (var (_, handlerType) in subscriberReceiverTypes)
             services.AddTransient(handlerType);
     }
-    
+
     static readonly Type SubscriberReceiverType = typeof(IEventSubscriber<>);
 
     internal static List<(Type eventType, Type handlerType)> GetSubscriberReceiverTypes(Assembly[] assemblies)
