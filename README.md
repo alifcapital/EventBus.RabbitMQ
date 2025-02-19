@@ -82,9 +82,9 @@ Start creating an event to publish. Your record must implement the `IPublishEven
 ```
 public record UserDeleted : PublishEvent
 {
-    public Guid UserId { get; set; }
+    public Guid UserId { get; init; }
     
-    public string UserName { get; set; }
+    public string UserName { get; init; }
 }
 ```
 
@@ -120,9 +120,9 @@ If you want to subscribe to necessary an event, first you need to create your ow
 ```
 public record UserCreated : SubscribeEvent
 {
-    public Guid UserId { get; set; }
+    public Guid UserId { get; init; }
 
-    public string UserName { get; set; }
+    public string UserName { get; init; }
 }
 ```
 
@@ -211,7 +211,7 @@ First you need to add a new section called `RabbitMQSettings` to your configurat
 ```
 
 A section may have the following subsections: <br/>
-`DefaultSettings` - to set the default configuration/settings for connecting to the RabbitMQ and publishing and receiving messages. If you don't pass them, it will use default settings of RabbitMQ; The default settings has optional parameter named `QueueArguments` to pass the arguments to the queue. Another thing is that, by passing false to the `IsEnabled` option, we able to just disable using RabbitMQ.<br/>
+`DefaultSettings` - to set the default configuration/settings for connecting to the RabbitMQ and publishing and receiving messages. If you don't pass them, it will use default settings of RabbitMQ; The default settings has optional parameter named `QueueArguments` to pass the arguments to the queue. Another thing is that, by passing false to the `IsEnabled` option, we are able to just disable using RabbitMQ.<br/>
 `Publishers` - set custom settings for the publishers if needed. If you don't pass them, it will use the virtual host settings based on the `VirtualHostKey` which configured in the `VirtualHostSettings` section; <br/>
 `Subscribers` - set custom settings for the subscribers if needed. If you don't pass them, it will use the virtual host settings based on the `VirtualHostKey` which configured in the `VirtualHostSettings` section; <br/>
 `VirtualHostSettings` - adding virtual host configuration by given a key to use them from the publishers and subscribers. If we just add a new virtual host and not set all parameters, the not assigned properties automatically get/inherit a value from the default settings. If we don't want to use the default settings, we need to just set empty to the property to avoid auto-set. Then we can use the registered a virtual host from any subscribers or publishers by passing a `VirtualHostKey` value. <br/>
