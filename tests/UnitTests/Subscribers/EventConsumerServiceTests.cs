@@ -2,6 +2,7 @@ using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Subscribers.Consumers;
+using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
 using FluentAssertions;
@@ -50,24 +51,28 @@ public class EventConsumerServiceTests : BaseTestEntity
     public void AddSubscriber_WithOptionsQueueName_ShouldAddSubscriber()
     {
         var queueName = "test-queue";
+        var eventType = typeof(SimpleSubscribeEvent);
+        var subscriberType = typeof(SimpleEventSubscriberHandler);
         var settings = new EventSubscriberOptions
         {
-            EventTypeName = nameof(SimpleSubscribeEvent),
+            EventTypeName = eventType.Name,
             QueueName = queueName,
         };
-        var eventInfo = (typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), settings);
-
-        _consumerService.AddSubscriber(eventInfo);
-
-        var field = _consumerService.GetType()
-            .GetField("_subscribers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
+        var subscribersInformation = new SubscribersInformation
+        {
+            EventTypeName = eventType.Name,
+            Settings = settings
+        };
+        subscribersInformation.AddSubscriberIfNotExists(eventType, subscriberType);
         
-        var subscribers =
-            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
-            field?.GetValue(_consumerService)!;
-        subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers?.First().Value.eventSettings.QueueName.Should().Be(queueName);
+        _consumerService.AddSubscriber(subscribersInformation);
+
+        var allSubscribers = GetAllSubscribersInformation();
+        Assert.That(allSubscribers.ContainsKey(eventType.Name), Is.True);
+        
+        var subscribersInfo = allSubscribers[eventType.Name];
+        Assert.That(subscribersInfo.Settings.QueueName, Is.EqualTo(queueName));
+        Assert.That(subscribersInfo.Subscribers.Count, Is.EqualTo(1));
     }
 
     #endregion
@@ -88,5 +93,24 @@ public class EventConsumerServiceTests : BaseTestEntity
         consumerChannel.Should().NotBeNull();
     }
 
+    #endregion
+    
+    #region Helper methods
+    
+    /// <summary>
+    /// Get the subscribers information from the EventConsumerService
+    /// </summary>
+    /// <returns></returns>
+    private Dictionary<string, SubscribersInformation> GetAllSubscribersInformation()
+    {
+        const string subscribersFieldName = "_subscribers";
+        var field = _consumerService.GetType()
+            .GetField(subscribersFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+        field.Should().NotBeNull();
+        
+        var subscribers = (Dictionary<string, SubscribersInformation>)field?.GetValue(_consumerService)!;
+        return subscribers;
+    }
+    
     #endregion
 }

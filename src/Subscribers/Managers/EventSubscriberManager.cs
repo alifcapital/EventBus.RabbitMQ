@@ -19,7 +19,7 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
     /// <summary>
     /// Dictionary collection to store all event and event handler information
     /// </summary>
-    private static readonly Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>
+    private static readonly Dictionary<string, SubscribersInformation>
         Subscribers = new();
 
     /// <summary>
@@ -32,18 +32,19 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
         where TEventHandler : class, IEventSubscriber<TEvent>
     {
         var eventType = typeof(TEvent);
-        if (Subscribers.TryGetValue(eventType.Name, out var info))
+        var handlerType = typeof(TEventHandler);
+        if (!Subscribers.TryGetValue(eventType.Name, out var subscribersInformation))
         {
-            options?.Invoke(info.eventSettings);
+            subscribersInformation = new SubscribersInformation
+            {
+                EventTypeName = eventType.Name,
+                Settings = new EventSubscriberOptions()
+            };
+            Subscribers.Add(eventType.Name, subscribersInformation);
         }
-        else
-        {
-            var settings = new EventSubscriberOptions();
-            options?.Invoke(settings);
-
-            var handlerType = typeof(TEventHandler);
-            Subscribers.Add(eventType.Name, (eventType, handlerType, settings));
-        }
+        
+        options?.Invoke(subscribersInformation.Settings);
+        subscribersInformation.AddSubscriberIfNotExists(eventType, handlerType);
     }
 
     /// <summary>
@@ -54,10 +55,21 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
     /// <param name="subscriberSettings">Settings of subscriber</param>
     public void AddSubscriber(Type typeOfSubscriber, Type typeOfHandler, EventSubscriberOptions subscriberSettings)
     {
-        if (Subscribers.TryGetValue(typeOfSubscriber.Name, out var info))
-            Subscribers[typeOfSubscriber.Name] = (info.eventType, info.eventHandlerType, subscriberSettings);
+        if (Subscribers.TryGetValue(typeOfSubscriber.Name, out var subscribersInformation))
+        {
+            subscribersInformation.Settings = subscriberSettings;
+        }
         else
-            Subscribers.Add(typeOfSubscriber.Name, (typeOfSubscriber, typeOfHandler, subscriberSettings));
+        {
+            subscribersInformation = new SubscribersInformation
+            {
+                EventTypeName = typeOfSubscriber.Name,
+                Settings = subscriberSettings
+            };
+            Subscribers.Add(typeOfSubscriber.Name, subscribersInformation);
+        }
+        
+        subscribersInformation.AddSubscriberIfNotExists(typeOfSubscriber, typeOfHandler);
     }
 
     /// <summary>
@@ -65,8 +77,9 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
     /// </summary>
     public void SetVirtualHostAndOwnSettingsOfSubscribers(Dictionary<string, RabbitMqHostSettings> virtualHostsSettings)
     {
-        foreach (var (eventTypeName, (_, _, eventSettings)) in Subscribers)
+        foreach (var (eventTypeName, subscribersInformation) in Subscribers)
         {
+            var eventSettings = subscribersInformation.Settings;
             var virtualHostSettings = string.IsNullOrEmpty(eventSettings.VirtualHostKey)
                 ? defaultSettings
                 : virtualHostsSettings.GetValueOrDefault(eventSettings.VirtualHostKey, defaultSettings);
@@ -80,11 +93,11 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
         foreach (var (_, eventInfo) in Subscribers)
         {
             var consumerId =
-                $"{eventInfo.eventSettings.VirtualHostSettings.VirtualHost}-{eventInfo.eventSettings.QueueName}";
+                $"{eventInfo.Settings.VirtualHostSettings.VirtualHost}-{eventInfo.Settings.QueueName}";
             if (!_eventConsumers.TryGetValue(consumerId, value: out var eventConsumer))
             {
                 eventConsumer =
-                    eventConsumerCreator.Create(eventInfo.eventSettings, serviceProvider, defaultSettings.UseInbox);
+                    eventConsumerCreator.Create(eventInfo.Settings, serviceProvider, defaultSettings.UseInbox);
                 _eventConsumers.Add(consumerId, eventConsumer);
             }
 
@@ -94,14 +107,14 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
         foreach (var consumer in _eventConsumers)
             consumer.Value.StartAndSubscribeReceiver();
     }
-    
+
     /// <summary>
     /// Invokes the ExecutingReceivedEvent event to be able to execute the event before the subscriber.
     /// </summary>
     /// <param name="event">Executing an event</param>
     /// <param name="virtualHostName">The name of virtual host to being able to get a system name that the event published by it.</param>
     /// <param name="serviceProvider">The IServiceProvider used to resolve dependencies from the scope.</param>
-    public static void OnExecutingSubscribedEvent(ISubscribeEvent @event, string virtualHostName, 
+    public static void OnExecutingSubscribedEvent(ISubscribeEvent @event, string virtualHostName,
         IServiceProvider serviceProvider)
     {
         if (ExecutingSubscribedEvent is null)
@@ -124,7 +137,7 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
 
             var eventTypeName = @event.GetType().Name;
             var virtualHostName = Subscribers.TryGetValue(eventTypeName, out var info)
-                ? info.eventSettings.VirtualHostSettings.VirtualHost
+                ? info.Settings.VirtualHostSettings.VirtualHost
                 : string.Empty;
 
             OnExecutingSubscribedEvent(@event, virtualHostName, e.ServiceProvider);

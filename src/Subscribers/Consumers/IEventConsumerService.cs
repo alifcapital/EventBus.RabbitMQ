@@ -1,4 +1,4 @@
-using EventBus.RabbitMQ.Subscribers.Options;
+using EventBus.RabbitMQ.Subscribers.Models;
 
 namespace EventBus.RabbitMQ.Subscribers.Consumers;
 
@@ -8,7 +8,7 @@ internal interface IEventConsumerService
     /// Registers a subscriber 
     /// </summary>
     /// <param name="eventInfo">Event and handler types with the settings which we want to subscribe</param>
-    public void AddSubscriber((Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings) eventInfo);
+    public void AddSubscriber(SubscribersInformation eventInfo);
 
     /// <summary>
     /// Starts receiving events by creating a consumer

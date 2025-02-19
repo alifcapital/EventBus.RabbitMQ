@@ -1,6 +1,7 @@
 using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
+using EventBus.RabbitMQ.Exceptions;
 using EventBus.RabbitMQ.Publishers.Managers;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
@@ -131,12 +132,27 @@ public static class RabbitMqExtensions
 
     static readonly Type PublisherType = typeof(IPublishEvent);
 
+    /// <summary>
+    /// Get all types of publishers from the assemblies. 
+    /// </summary>
+    /// <param name="assemblies">Assemblies to find the publish event type</param>
+    /// <returns>Array of event types to publish</returns>
+    /// <exception cref="EventBusException">If there are duplicated event types with the same name</exception>
     internal static Type[] GetPublisherTypes(Assembly[] assemblies)
     {
         if (assemblies is not null)
         {
-            return assemblies.SelectMany(a => a.GetTypes())
+            var publisherTypes = assemblies.SelectMany(a => a.GetTypes())
                 .Where(t => t is { IsClass: true, IsAbstract: false } && PublisherType.IsAssignableFrom(t)).ToArray();
+            
+            var duplicatedTypes = publisherTypes
+                .GroupBy(t => t.Name)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key).ToArray();
+            if (duplicatedTypes.Any())
+                throw new EventBusException($"There are duplicated event types to publish: {string.Join(", ", duplicatedTypes)}. Please make sure that there is only one event type with the same name.");
+            
+            return publisherTypes;
         }
 
         return [];
@@ -201,7 +217,7 @@ public static class RabbitMqExtensions
 
     internal static List<(Type eventType, Type handlerType)> GetSubscriberReceiverTypes(Assembly[] assemblies)
     {
-        List<(Type eventType, Type handlerType)> subscriberHandlerTypes = new();
+        List<(Type eventType, Type handlerType)> subscriberHandlerTypes = [];
         if (assemblies is not null)
         {
             var allTypes = assemblies

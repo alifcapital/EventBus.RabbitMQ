@@ -88,7 +88,7 @@ public record UserDeleted : PublishEvent
 }
 ```
 
-To publish your event, you must first inject the `IEventPublisherManager` interface from the DI and pass your event object to the `Publish` method. Then, your event will be published.
+To publish your event, you must first inject the `IEventPublisherManager` interface from the DI and pass your event object to the `PublishAsync` method. Then, your event will be published.
 
 ```
 public class UserController : ControllerBase
@@ -138,17 +138,17 @@ public class UserCreatedSubscriber : IEventSubscriber<UserCreated>
         _logger = logger;
     }
 
-    public async Task Receive(UserCreated @event)
+    public async Task HandleAsync(UserCreated @event)
     {
         _logger.LogInformation("EventId ({EventId}): '{UserName}' user is created with the {UserId} id", @event.EventId,
             @event.UserName, @event.UserId);
 
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 }
 ```
 
-Depend on your business logic, you need to add your logic to the `Receive` method of subscriber to do something based on your received event.
+Depend on your business logic, you need to add your logic to the `HandleAsync` method of subscriber to do something based on your received event.
 
 ### Advanced configuration of publishers and subscribers from configuration file.
 
@@ -382,13 +382,13 @@ _eventPublisherManager.Publish(userUpdated);
 
 We can read the attached property value from the Headers collection of the received event. Example:
 ```
-public async Task Receive(UserCreated @event)
+public async Task HandleAsync(UserCreated @event)
 {
     if (@event.Headers?.TryGetValue("TraceId", out var traceId) == true)
     {
     }
 
-    return Task.CompletedTask;
+    await Task.CompletedTask;
 }
 ```
 
@@ -452,10 +452,10 @@ public class MessageBrokerEventPublisher : IMessageBrokerEventPublisher
         _eventPublisher = eventPublisher;
     }
     
-    public async Task Publish(ISendEvent @event, string eventPath)
+    public async Task PublishAsync(ISendEvent @event, string eventPath)
     {
         _eventPublisher.Publish((IPublishEvent)@event);
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 }
 ```
@@ -470,17 +470,17 @@ public class CreatedUserMessageBrokerEventPublisher : IMessageBrokerEventPublish
         _eventPublisher = eventPublisher;
     }
     
-    public async Task Publish(UserCreated @event, string eventPath)
+    public async Task PublishAsync(UserCreated @event, string eventPath)
     {
         _eventPublisher.Publish(@event);
         
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 }
 ```
 
 Since we want to publish our an event to the RabbitMQ, the event subscriber must implement the `IMessageBrokerEventPublisher` by passing the type of event we want to publish. And, inject the `IEventPublisherManager` interface to publish the publishing `UserCreated` event to the `RabbitMQ`.
-When we use the `Send` method of the `IEventSenderManager` to send an event, the event is first stored in the database. Based on our configuration (_by default, after one second_), the event will then be automatically execute the `Publish` method of created the `CreatedUserMessageBrokerEventPublisher` event publisher.
+When we use the `Send` method of the `IEventSenderManager` to send an event, the event is first stored in the database. Based on our configuration (_by default, after one second_), the event will then be automatically execute the `PublishAsync` method of created the `CreatedUserMessageBrokerEventPublisher` event publisher.
 
 If an event fails for any reason, the server will automatically retry publishing it, with delays based on the configuration you set in the [Outbox section](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections).
 
@@ -520,7 +520,7 @@ And then, set `true` to the `UseInbox` option of the `RabbitMQSettings.DefaultSe
   }
 ```
 
-That's all. Now all incoming events from RabbitMQ are stored in the `Inbox` table of the database and then execute the `Receive` method of your event subscriber. See the [document of creating event subscriber](https://github.com/alifcapital/EventBus.RabbitMQ?tab=readme-ov-file#create-a-subscriber-to-the-event).
+That's all. Now all incoming events from RabbitMQ are stored in the `Inbox` table of the database and then execute the `HandleAsync` method of your event subscriber. See the [document of creating event subscriber](https://github.com/alifcapital/EventBus.RabbitMQ?tab=readme-ov-file#create-a-subscriber-to-the-event).
 
 #### Advanced configuration of the Inbox and Outbox functionalities while registering to the DI services.
 
@@ -554,3 +554,9 @@ builder.Services.AddRabbitMQEventBus(builder.Configuration,
 );
 ```
 `eventStoreOptions` - it is an alternative way of overwriting configurations of the `Inbox` and `Outbox` functionalities. If you don't pass them, it will use default settings from the `AppSettings`. About other configurations, you can get information from [here](https://github.com/alifcapital/EventBus.RabbitMQ?tab=readme-ov-file#advanced-configuration-of-publishers-and-subscribers-while-registering-to-the-di-services).
+
+### Can we create multiple event publishers for the same event type?
+No, we can't. If we try to create multiple event publishers for the same event type, it will throw an exception. The library is designed to work with a single event publisher for each event type.
+
+### Can we create multiple event subscribers for the same event type?
+Yes, we can. The library is designed to work with multiple event subscribers for the same event type, even if there are multiple event types with the same name, we support them. So, when event received, all event subscribers of event will be executed.
