@@ -554,3 +554,9 @@ builder.Services.AddRabbitMQEventBus(builder.Configuration,
 );
 ```
 `eventStoreOptions` - it is an alternative way of overwriting configurations of the `Inbox` and `Outbox` functionalities. If you don't pass them, it will use default settings from the `AppSettings`. About other configurations, you can get information from [here](https://github.com/alifcapital/EventBus.RabbitMQ?tab=readme-ov-file#advanced-configuration-of-publishers-and-subscribers-while-registering-to-the-di-services).
+
+### Can we create multiple event publishers for the same event type?
+No, we can't. If we try to create multiple event publishers for the same event type, it will throw an exception. The library is designed to work with a single event publisher for each event type.
+
+### Can we create multiple event subscribers for the same event type?
+Yes, we can. The library is designed to work with multiple event subscribers for the same event type, even if there are multiple event types with the same name, we support them. So, when event received, all subscribers of event type will be executed.
