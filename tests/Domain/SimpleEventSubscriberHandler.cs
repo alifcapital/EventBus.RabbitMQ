@@ -4,8 +4,8 @@ namespace EventBus.RabbitMQ.Tests.Domain;
 
 public class SimpleEventSubscriberHandler : IEventSubscriber<SimpleSubscribeEvent>
 {
-    public Task Receive(SimpleSubscribeEvent @event)
+    public async Task HandleAsync(SimpleSubscribeEvent @event)
     {
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 }

@@ -89,7 +89,7 @@ internal class EventConsumerService : IEventConsumerService
         return channel;
     }
 
-    private const string HandlerMethodName = nameof(IEventSubscriber<ISubscribeEvent>.Receive);
+    private const string HandlerMethodName = nameof(IEventSubscriber<ISubscribeEvent>.HandleAsync);
 
     /// <summary>
     /// An event to receive all sent events

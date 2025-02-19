@@ -4,8 +4,8 @@ namespace EventBus.RabbitMQ.Tests.Domain.Module2;
 
 public class UserCreatedSubscriber : IEventSubscriber<UserCreated>
 {
-    public Task Receive(UserCreated @event)
+    public async Task HandleAsync(UserCreated @event)
     {
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 }
