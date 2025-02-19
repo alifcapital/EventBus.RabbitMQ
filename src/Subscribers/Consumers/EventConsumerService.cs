@@ -2,11 +2,11 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using EventBus.RabbitMQ.Connections;
+using EventBus.RabbitMQ.Exceptions;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
-using EventStorage.Exceptions;
 using EventStorage.Inbox.Managers;
 using EventStorage.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,7 +28,7 @@ internal class EventConsumerService : IEventConsumerService
     /// <summary>
     /// Dictionary collection to store all events and event handlers information
     /// </summary>
-    private readonly Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>
+    private readonly Dictionary<string, SubscribersInformation>
         _subscribers = new();
 
     public EventConsumerService(EventSubscriberOptions connectionOptions, IServiceProvider serviceProvider,
@@ -42,9 +42,9 @@ internal class EventConsumerService : IEventConsumerService
         _useInbox = useInbox;
     }
 
-    public void AddSubscriber((Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings) eventInfo)
+    public void AddSubscriber(SubscribersInformation eventInfo)
     {
-        _subscribers.Add(eventInfo.eventSettings.EventTypeName!, eventInfo);
+        _subscribers.Add(eventInfo.Settings.EventTypeName!, eventInfo);
     }
 
     /// <summary>
@@ -73,7 +73,7 @@ internal class EventConsumerService : IEventConsumerService
             durable: true, autoDelete: false);
         channel.QueueDeclare(_connectionOptions.QueueName, durable: true, exclusive: false, autoDelete: false,
             _connectionOptions.VirtualHostSettings.QueueArguments);
-        foreach (var eventSettings in _subscribers.Values.Select(s => s.eventSettings))
+        foreach (var eventSettings in _subscribers.Values.Select(s => s.Settings))
             channel.QueueBind(_connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.ExchangeName,
                 eventSettings.RoutingKey);
 
@@ -128,48 +128,28 @@ internal class EventConsumerService : IEventConsumerService
                 activity?.AddEvent(
                     new ActivityEvent($"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}"));
 
-            var headersAsJson = SerializeData(headers);
+            var eventHeadersAsJson = SerializeData(headers);
             if (EventBusTraceInstrumentation.ShouldAttachEventHeaders)
                 activity?.AddEvent(
-                    new ActivityEvent($"{EventBusTraceInstrumentation.EventHeadersTag}: {headersAsJson}"));
+                    new ActivityEvent($"{EventBusTraceInstrumentation.EventHeadersTag}: {eventHeadersAsJson}"));
 
             if (_subscribers.TryGetValue(eventType,
-                    out (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings) info))
+                    out var subscribersInformation))
             {
-                _logger.LogTrace("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}", eventType,
+                _logger.LogTrace("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}", subscribersInformation.EventTypeName,
                     eventArgs.BasicProperties.MessageId);
                 var eventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out Guid messageId)
                     ? messageId
                     : Guid.NewGuid();
-
+                
                 using var scope = _serviceProvider.CreateScope();
                 if (_useInbox)
                 {
-                    IEventReceiverManager eventReceiverManager =
-                        scope.ServiceProvider.GetService<IEventReceiverManager>();
-                    if (eventReceiverManager is null)
-                        throw new EventStoreException(
-                            $"The RabbitMQ is configured to use the Inbox for received events, but the Inbox functionality of the EventStorage is not enabled. So, the {info.eventHandlerType.Name} event subscriber of an event will be executed immediately for the event id: {eventId};");
-
-                    _ = eventReceiverManager.Received(eventId, info.eventType.Name, eventArgs.RoutingKey,
-                        EventProviderType.MessageBroker, payload: eventPayload, headers: headersAsJson,
-                        namingPolicyType: info.eventSettings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase);
+                    StoreEventToInbox(scope.ServiceProvider, subscribersInformation, eventId, eventPayload, eventHeadersAsJson);
                 }
                 else
                 {
-                    var jsonSerializerSetting = info.eventSettings.GetJsonSerializer();
-                    var receivedEvent =
-                        JsonSerializer.Deserialize(eventPayload, info.eventType, jsonSerializerSetting) as
-                            ISubscribeEvent;
-
-                    receivedEvent!.EventId = eventId;
-                    receivedEvent!.Headers = headers;
-
-                    EventSubscriberManager.OnExecutingSubscribedEvent(receivedEvent, _connectionOptions.VirtualHostSettings.VirtualHost, scope.ServiceProvider);
-
-                    var eventHandlerSubscriber = scope.ServiceProvider.GetRequiredService(info.eventHandlerType);
-                    var handleMethod = info.eventHandlerType.GetMethod(HandlerMethodName);
-                    await ((Task)handleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;
+                    await ExecuteSubscribers(subscribersInformation, eventPayload, eventId, headers, scope.ServiceProvider);
                 }
 
                 MarkEventIsDelivered();
@@ -213,6 +193,42 @@ internal class EventConsumerService : IEventConsumerService
             }
 
             return eventHeaders;
+        }
+
+        async Task ExecuteSubscribers(SubscribersInformation subscribersInformation, string eventPayload, Guid eventId, Dictionary<string, string> headers,
+            IServiceProvider serviceProvider)
+        {
+            var jsonSerializerSetting = subscribersInformation.Settings.GetJsonSerializer();
+            var virtualHost = _connectionOptions.VirtualHostSettings.VirtualHost;
+
+            foreach (var subscriber in subscribersInformation.Subscribers)
+            {
+                var receivedEvent =
+                    JsonSerializer.Deserialize(eventPayload, subscriber.EventType, jsonSerializerSetting) as
+                        ISubscribeEvent;
+
+                receivedEvent!.EventId = eventId;
+                receivedEvent!.Headers = headers;
+
+                EventSubscriberManager.OnExecutingSubscribedEvent(receivedEvent, virtualHost, serviceProvider);
+
+                var eventHandlerSubscriber = serviceProvider.GetRequiredService(subscriber.EventSubscriberType);
+                var handleMethod = subscriber.EventSubscriberType.GetMethod(HandlerMethodName);
+                await ((Task)handleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;
+            }
+        }
+
+        void StoreEventToInbox(IServiceProvider serviceProvider, SubscribersInformation subscribersInformation, Guid eventId, string eventPayload, string eventHeadersAsJson)
+        {
+            var eventReceiverManager = serviceProvider.GetService<IEventReceiverManager>();
+            if (eventReceiverManager is null)
+                throw new EventBusException(
+                    "The RabbitMQ is configured to use the Inbox for received events, but the Inbox functionality of the EventStorage is not enabled.");
+
+            var namingPolicyType = subscribersInformation.Settings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase;
+            _ = eventReceiverManager.Received(eventId, subscribersInformation.EventTypeName, eventArgs.RoutingKey,
+                EventProviderType.MessageBroker, payload: eventPayload, headers: eventHeadersAsJson,
+                namingPolicyType: namingPolicyType);
         }
 
         #endregion

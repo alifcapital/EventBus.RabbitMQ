@@ -2,6 +2,7 @@ using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Subscribers.Consumers;
 using EventBus.RabbitMQ.Subscribers.Managers;
+using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
 using FluentAssertions;
@@ -170,18 +171,14 @@ public class EventSubscriberManagerTests : BaseTestEntity
 
         _subscriberManager.CreateConsumerForEachQueueAndStartReceivingEvents();
 
-        var field = _subscriberManager.GetType()
-            .GetField("_eventConsumers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var eventConsumers = (Dictionary<string, IEventConsumerService>)field?.GetValue(_subscriberManager)!;
+        var eventConsumers = GetEventConsumerServices();
 
         eventConsumers.Should().ContainKey("TestVirtualHost-TestQueue");
         eventConsumer.Received().AddSubscriber(
-            Arg.Is<(Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>
-            (evInfo =>
-                evInfo.eventHandlerType == typeof(SimpleEventSubscriberHandler) &&
-                evInfo.eventType == typeof(SimpleSubscribeEvent) &&
-                evInfo.eventSettings.QueueName == "TestQueue"
+            Arg.Is<SubscribersInformation>
+            (subscribersInfo =>
+                subscribersInfo.EventTypeName == nameof(SimpleSubscribeEvent) &&
+                subscribersInfo.Settings.QueueName == "TestQueue"
             )
         );
     }
@@ -201,6 +198,16 @@ public class EventSubscriberManagerTests : BaseTestEntity
             SubscribersProperty?.GetValue(eventSubscriberManager)!;
 
         return subscribers;
+    }
+
+    private Dictionary<string, IEventConsumerService> GetEventConsumerServices()
+    {
+        const string eventConsumersFieldName = "_eventConsumers";
+        var field = _subscriberManager.GetType()
+            .GetField(eventConsumersFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+        field.Should().NotBeNull();
+        var eventConsumers = (Dictionary<string, IEventConsumerService>)field?.GetValue(_subscriberManager)!;
+        return eventConsumers;
     }
 
     #endregion
