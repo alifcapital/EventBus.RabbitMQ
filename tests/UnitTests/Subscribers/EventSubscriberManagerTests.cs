@@ -32,34 +32,56 @@ public class EventSubscriberManagerTests : BaseTestEntity
     [Test]
     public void AddSubscriber_CallingWithGenericAndWithOption_ShouldAdded()
     {
-        var options = new Action<EventSubscriberOptions>(x => { x.QueueName = "TestQueue"; });
+        var queueName = "TestQueue";
+        var options = new Action<EventSubscriberOptions>(x => { x.QueueName = queueName; });
 
         _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
 
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.eventSettings.QueueName.Should().Be("TestQueue");
+        subscribers!.First().Value.Settings.QueueName.Should().Be(queueName);
     }
+ 
+    [Test]
+    public void AddSubscriber_RegisteringOneEventTwice_ShouldBeRegisteredOnlyOneEventWithOneSubscriber()
+    {
+        var typeOfEvent = typeof(SimpleSubscribeEvent);
+        var typeOfHandler = typeof(SimpleEventSubscriberHandler);
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>();
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>();
 
+        var subscribers = GetSubscribers();
+        Assert.That(subscribers.ContainsKey(typeOfEvent.Name), Is.True);
+        
+        var subscribersInfo = subscribers[typeOfEvent.Name];
+        Assert.That(subscribersInfo.Subscribers.Count, Is.EqualTo(1));
+        
+        var subscriberInfo = subscribersInfo.Subscribers.First();
+        Assert.That(subscriberInfo.EventType, Is.EqualTo(typeOfEvent));
+        Assert.That(subscriberInfo.EventSubscriberType, Is.EqualTo(typeOfHandler));
+    }
+ 
     [Test]
     public void AddSubscriber_AddingExistingEventWithNewOptions_ShouldUpdateEventOptions()
     {
+        var newQueueName = "TestQueueUpdated";
         var options = new Action<EventSubscriberOptions>(x => { x.QueueName = "TestQueue"; });
 
         _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
         _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(x =>
         {
-            x.QueueName = "TestQueueUpdated";
+            x.QueueName = newQueueName;
         });
 
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.eventSettings.QueueName.Should().Be("TestQueueUpdated");
+        subscribers!.First().Value.Settings.QueueName.Should().Be(newQueueName);
     }
 
     [Test]
     public void AddSubscriber_CallingWithTypesOfEventAndTypeOfHandlerAndWithOptions_ShouldAdded()
     {
+        var queueName = "TestQueue";
         var options = new EventSubscriberOptions
         {
             QueueName = "TestQueue",
@@ -69,12 +91,33 @@ public class EventSubscriberManagerTests : BaseTestEntity
 
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.eventSettings.QueueName.Should().Be("TestQueue");
+        subscribers!.First().Value.Settings.QueueName.Should().Be(queueName);
+    }
+ 
+    [Test]
+    public void AddSubscriber_RegisteringOneEventTwiceByType_ShouldBeRegisteredOnlyOneEventWithOneSubscriber()
+    {
+        var typeOfEvent = typeof(SimpleSubscribeEvent);
+        var typeOfHandler = typeof(SimpleEventSubscriberHandler);
+        var options = new EventSubscriberOptions();
+        _subscriberManager.AddSubscriber(typeOfEvent, typeOfHandler, options);
+        _subscriberManager.AddSubscriber(typeOfEvent, typeOfHandler, options);
+
+        var subscribers = GetSubscribers();
+        Assert.That(subscribers.ContainsKey(typeOfEvent.Name), Is.True);
+        
+        var subscribersInfo = subscribers[typeOfEvent.Name];
+        Assert.That(subscribersInfo.Subscribers.Count, Is.EqualTo(1));
+        
+        var subscriberInfo = subscribersInfo.Subscribers.First();
+        Assert.That(subscriberInfo.EventType, Is.EqualTo(typeOfEvent));
+        Assert.That(subscriberInfo.EventSubscriberType, Is.EqualTo(typeOfHandler));
     }
 
     [Test]
     public void AddSubscriber_CallingWithTypesAddingExistingEventWithNewOptions_ShouldUpdateEventOptions()
     {
+        var newQueueName = "TestQueueUpdated";
         var options = new EventSubscriberOptions
         {
             QueueName = "TestQueue",
@@ -84,12 +127,12 @@ public class EventSubscriberManagerTests : BaseTestEntity
         _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler),
             new EventSubscriberOptions
             {
-                QueueName = "TestQueueUpdated"
+                QueueName = newQueueName
             });
 
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.eventSettings.QueueName.Should().Be("TestQueueUpdated");
+        subscribers!.First().Value.Settings.QueueName.Should().Be(newQueueName);
     }
 
     [Test]
@@ -100,7 +143,7 @@ public class EventSubscriberManagerTests : BaseTestEntity
         
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.eventSettings.QueueName.Should().BeNull();
+        subscribers!.First().Value.Settings.QueueName.Should().BeNull();
     }
 
     #endregion
@@ -128,7 +171,7 @@ public class EventSubscriberManagerTests : BaseTestEntity
 
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.eventSettings.VirtualHostSettings.VirtualHost.Should().Be("TestVirtualHost");
+        subscribers!.First().Value.Settings.VirtualHostSettings.VirtualHost.Should().Be("TestVirtualHost");
     }
 
     #endregion
@@ -190,11 +233,11 @@ public class EventSubscriberManagerTests : BaseTestEntity
     private static readonly FieldInfo SubscribersProperty = typeof(EventSubscriberManager)
         .GetField("Subscribers", BindingFlags.NonPublic | BindingFlags.Static);
     
-    Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)> GetSubscribers()
+    Dictionary<string, SubscribersInformation> GetSubscribers()
     {
         var eventSubscriberManager = typeof(EventSubscriberManager);
         var subscribers =
-            (Dictionary<string, (Type eventType, Type eventHandlerType, EventSubscriberOptions eventSettings)>)
+            (Dictionary<string, SubscribersInformation>)
             SubscribersProperty?.GetValue(eventSubscriberManager)!;
 
         return subscribers;

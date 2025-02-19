@@ -52,19 +52,18 @@ public class RabbitMqExtensionsTests : BaseTestEntity
 
     #endregion
 
-
     #region GetSubscriberTypes
 
     [Test]
     public void GetSubscriberTypes_GettingJustCreatedOnThisProjectEvent_ShouldReturnOneExpectedTypeAndHandlerType()
     {
-        // Arrange
-        var expectedTypes = new List<(Type eventType, Type handlerType)>()
+        var expectedTypes = new List<(Type eventType, Type handlerType)>
         {
-            (typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler))
+            (typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler)),
+            (typeof(Domain.Module1.UserCreated), typeof(Domain.Module1.UserCreatedSubscriber)),
+            (typeof(Domain.Module2.UserCreated), typeof(Domain.Module2.UserCreatedSubscriber))
         };
 
-        // Act
         var result = RabbitMqExtensions.GetSubscriberReceiverTypes(
             [
                 typeof(RabbitMqExtensionsTests).Assembly,
@@ -72,7 +71,6 @@ public class RabbitMqExtensionsTests : BaseTestEntity
             ]
         );
 
-        // Assert
         result.Should().BeEquivalentTo(expectedTypes);
     }
 
