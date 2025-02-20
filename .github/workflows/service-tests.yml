@@ -8,5 +8,5 @@ jobs:
   Testing:
     uses: ./.github/workflows/run-tests.yml
     with:
-      unit_and_functionality_tests_project_path: 'tests/EventBus.RabbitMQ.Tests.csproj'
+      unit_and_functionality_tests_project_path: 'tests/EventBus.RabbitMQ.Tests/EventBus.RabbitMQ.Tests.csproj'
     secrets: inherit
