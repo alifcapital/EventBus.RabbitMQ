@@ -25,11 +25,11 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Using Include="NUnit.Framework"/>
+      <ProjectReference Include="..\..\src\EventBus.RabbitMQ.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\src\EventBus.RabbitMQ.csproj" />
+        <Using Include="NUnit.Framework" />
     </ItemGroup>
 
 </Project>
