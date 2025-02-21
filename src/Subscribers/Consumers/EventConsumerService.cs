@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using EventBus.RabbitMQ.Connections;
@@ -88,9 +89,7 @@ internal class EventConsumerService : IEventConsumerService
 
         return channel;
     }
-
-    private const string HandlerMethodName = nameof(IEventSubscriber<ISubscribeEvent>.HandleAsync);
-
+    
     /// <summary>
     /// An event to receive all sent events
     /// </summary>
@@ -213,8 +212,7 @@ internal class EventConsumerService : IEventConsumerService
                 EventSubscriberManager.OnExecutingSubscribedEvent(receivedEvent, virtualHost, serviceProvider);
 
                 var eventHandlerSubscriber = serviceProvider.GetRequiredService(subscriber.EventSubscriberType);
-                var handleMethod = subscriber.EventSubscriberType.GetMethod(HandlerMethodName);
-                await ((Task)handleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;
+                await ((Task)subscriber.HandleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;
             }
         }
 
