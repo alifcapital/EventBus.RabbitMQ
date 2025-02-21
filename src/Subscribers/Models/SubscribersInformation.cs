@@ -4,22 +4,25 @@ namespace EventBus.RabbitMQ.Subscribers.Models;
 
 internal record SubscribersInformation
 {
+    private const string HandleMethodName = nameof(IEventSubscriber<ISubscribeEvent>.HandleAsync);
+
     /// <summary>
     /// The name of the event type.
     /// </summary>
     public required string EventTypeName { get; init; }
-    
+
     /// <summary>
     /// The settings of the event subscriber.
     /// </summary>
     public required EventSubscriberOptions Settings { get; set; }
 
     private readonly List<SubscriberInformation> _subscribers = [];
+
     /// <summary>
     /// All subscribers information which are related to the one event.
     /// </summary>
     public IReadOnlyList<SubscriberInformation> Subscribers => _subscribers.AsReadOnly();
-    
+
     /// <summary>
     /// Adds a subscriber if it does not exist.
     /// </summary>
@@ -29,11 +32,13 @@ internal record SubscribersInformation
     {
         if (_subscribers.Any(x => x.EventType == eventType && x.EventSubscriberType == eventHandlerType))
             return;
-        
+
+        var handlerMethod = eventHandlerType.GetMethod(HandleMethodName);
         _subscribers.Add(new SubscriberInformation
         {
             EventType = eventType,
-            EventSubscriberType = eventHandlerType
+            EventSubscriberType = eventHandlerType,
+            HandleMethod = handlerMethod
         });
     }
 }
