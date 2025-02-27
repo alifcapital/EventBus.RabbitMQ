@@ -82,9 +82,9 @@ Start creating an event to publish. Your record must implement the `IPublishEven
 ```
 public record UserDeleted : PublishEvent
 {
-    public Guid UserId { get; init; }
+    public required Guid UserId { get; init; }
     
-    public string UserName { get; init; }
+    public required string UserName { get; init; }
 }
 ```
 
@@ -120,9 +120,9 @@ If you want to subscribe to necessary an event, first you need to create your ow
 ```
 public record UserCreated : SubscribeEvent
 {
-    public Guid UserId { get; init; }
+    public required Guid UserId { get; init; }
 
-    public string UserName { get; init; }
+    public required string UserName { get; init; }
 }
 ```
 
@@ -412,54 +412,28 @@ As you know, the Outbox pattern for storing all outgoing events or messages of a
 ```
 The `InboxAndOutbox` is the main section for setting of the Outbox and Inbox functionalities. The `Outbox` and `Inbox` subsections offer numerous options. For a detailed explanation on using these options, go to the [options of Inbox and Outbox sections](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections) of the EventStorage documentation.
 
-Your application is now ready to use the Outbox feature. Now you can inject the `IEventSenderManager` interface from anywhere in your application, and use the `Send` method to publish your event.
+Your application is now ready to use the Outbox feature. Inject the `IOutboxEventManager` interface from anywhere in your application, and use the `Store` method to publish your `UserCreated` event.
 
 ```
-public class UserController : ControllerBase
+public class UserController(IOutboxEventManager outboxEventManager) : ControllerBase
 {
-    private readonly IEventSenderManager _eventSenderManager;
-
-    public UserController(IEventSenderManager eventSenderManager)
-    {
-        _eventSenderManager = eventSenderManager;
-    }
-    
     [HttpPost]
     public IActionResult Create([FromBody] User item)
     {
         Items.Add(item.Id, item);
 
         var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
-        //_eventPublisherManager.Publish(userCreated);
-        
-        var eventPath = userCreated.GetType().Name;
-        var succussfullySent = _eventSenderManager.Send(userCreated, EventProviderType.MessageBroker, eventPath);
+        var routingKey = "usser.created";
+        var succussfullySent = outboxEventManager.Store(userCreated, EventProviderType.MessageBroker, routingKey);
         
         return Ok(item);
     }
 }
 ```
 
-Next, add an event publisher to manage a publishing event with the MessageBroker provider. Since the event storage functionality is designed as a separate library, it doesn't know about the actual sending of events. Therefore, we need to create single an event publisher to the specific provider, in our use case is for a MessageBroker.
+By default, the current library has a `MessageBrokerEventPublisher` class that implements the `IMessageBrokerEventPublisher` interface, so you do not need to implement it. This class is used to publish all stored an outbox events to the RabbitMQ which configured as a MessageBroker provider.
+But if you want to create event publisher for the event type for being able to use properties of event without casting, you need to just create event publisher by using generic interface of necessary publisher. In our use case is IMessageBrokerEventPublisher<UserCreated>.
 
-```
-public class MessageBrokerEventPublisher : IMessageBrokerEventPublisher
-{
-    private readonly IEventPublisherManager _eventPublisher;
-    
-    public MessageBrokerEventPublisher(IEventPublisherManager eventPublisher)
-    {
-        _eventPublisher = eventPublisher;
-    }
-    
-    public async Task PublishAsync(ISendEvent @event, string eventPath)
-    {
-        _eventPublisher.Publish((IPublishEvent)@event);
-        await Task.CompletedTask;
-    }
-}
-```
-The MessageBrokerEventPublisher is serve for all kinds of events those are sending to the MessageBroker provider. But if you want to create event publisher for the event type for being able to use properties of event without casting, you need to just create event publisher by using generic interface of necessary publisher. In our use case is IMessageBrokerEventPublisher<UserCreated>.
 ```
 public class CreatedUserMessageBrokerEventPublisher : IMessageBrokerEventPublisher<UserCreated>
 {
@@ -479,8 +453,8 @@ public class CreatedUserMessageBrokerEventPublisher : IMessageBrokerEventPublish
 }
 ```
 
-Since we want to publish our an event to the RabbitMQ, the event subscriber must implement the `IMessageBrokerEventPublisher` by passing the type of event we want to publish. And, inject the `IEventPublisherManager` interface to publish the publishing `UserCreated` event to the `RabbitMQ`.
-When we use the `Send` method of the `IEventSenderManager` to send an event, the event is first stored in the database. Based on our configuration (_by default, after one second_), the event will then be automatically execute the `PublishAsync` method of created the `CreatedUserMessageBrokerEventPublisher` event publisher.
+Since we want to publish our an event to the RabbitMQ, the event publisher must implement the `IMessageBrokerEventPublisher` by passing the type of event we want to publish. And, inject the `IEventPublisherManager` interface to publish the publishing `UserCreated` event to the `RabbitMQ`.
+When we use the `Store` method of the `IOutboxEventManager` interface to publish an event, the event is first stored in the database. Then, based on our configuration (_by default, after one second_), the event will then be automatically execute the `PublishAsync` method of created the `CreatedUserMessageBrokerEventPublisher` event publisher.
 
 If an event fails for any reason, the server will automatically retry publishing it, with delays based on the configuration you set in the [Outbox section](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections).
 
