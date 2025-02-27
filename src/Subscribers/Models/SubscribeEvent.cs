@@ -4,7 +4,7 @@ using EventStorage.Models;
 namespace EventBus.RabbitMQ.Subscribers.Models;
 
 /// <summary>
-/// Base class for all subscriber classes
+/// The base class for all subscribe classes.
 /// </summary>
 public abstract record SubscribeEvent : ISubscribeEvent
 {
@@ -18,6 +18,6 @@ public abstract record SubscribeEvent : ISubscribeEvent
 
     public DateTime CreatedAt { get; init; }
 
-    [JsonIgnore] 
+    [JsonIgnore]
     public Dictionary<string, string> Headers { get; set; }
 }

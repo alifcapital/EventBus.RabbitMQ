@@ -3,13 +3,13 @@ using System.Text.Json.Serialization;
 namespace EventBus.RabbitMQ.Publishers.Models;
 
 /// <summary>
-/// Base class for all publisher classes
+/// The base class for all publisher classes.
 /// </summary>
 public abstract record PublishEvent : IPublishEvent
 {
-    protected PublishEvent(Guid? id = null)
+    protected PublishEvent()
     {
-        EventId = id ?? Guid.NewGuid();
+        EventId = Guid.CreateVersion7();
         CreatedAt = DateTime.Now;
     }
 

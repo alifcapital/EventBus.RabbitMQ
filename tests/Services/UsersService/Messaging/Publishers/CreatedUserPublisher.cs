@@ -4,18 +4,11 @@ using UsersService.Messaging.Events.Publishers;
 
 namespace UsersService.Messaging.Publishers;
 
-public class CreatedUserPublisher : IMessageBrokerEventPublisher<UserCreated>
+public class CreatedUserPublisher(IEventPublisherManager eventPublisher) : IMessageBrokerEventPublisher<UserCreated>
 {
-    private readonly IEventPublisherManager _eventPublisher;
-    
-    public CreatedUserPublisher(IEventPublisherManager eventPublisher)
-    {
-        _eventPublisher = eventPublisher;
-    }
-
     public async Task PublishAsync(UserCreated @event, string eventPath)
     {
-        _eventPublisher.Publish(@event);
+        eventPublisher.Publish(@event);
         //Add you logic
         await Task.CompletedTask;
     }
