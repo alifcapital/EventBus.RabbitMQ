@@ -1,9 +1,9 @@
+using EventBus.RabbitMQ.Publishers.Managers;
 using EventStorage.Models;
 using EventStorage.Outbox.Managers;
 using Microsoft.AspNetCore.Mvc;
 using UsersService.Messaging.Events.Publishers;
 using UsersService.Models;
-using IEventPublisherManager = EventBus.RabbitMQ.Publishers.Managers.IEventPublisherManager;
 
 namespace UsersService.Controllers;
 
@@ -12,17 +12,15 @@ namespace UsersService.Controllers;
 public class UserController : ControllerBase
 {
     private readonly IEventPublisherManager _eventPublisherManager;
-    private readonly IEventSenderManager _eventSenderManager;
+    private readonly IOutboxEventManager  _outboxEventManager;
 
-    private readonly ILogger<UserController> _logger;
     private static readonly Dictionary<Guid, User> Items = new();
 
-    public UserController(ILogger<UserController> logger, IEventPublisherManager eventPublisherManager,
-        IEventSenderManager eventSenderManager)
+    public UserController(IEventPublisherManager eventPublisherManager,
+        IOutboxEventManager outboxEventManager)
     {
-        _logger = logger;
         _eventPublisherManager = eventPublisherManager;
-        _eventSenderManager = eventSenderManager;
+        _outboxEventManager = outboxEventManager;
     }
 
     [HttpGet]
@@ -49,7 +47,7 @@ public class UserController : ControllerBase
         //_eventPublisherManager.Publish(userCreated);
         
         var eventPath = userCreated.GetType().Name;
-        var successfullySent = _eventSenderManager.Send(userCreated, EventProviderType.MessageBroker, eventPath);
+        var successfullySent = _outboxEventManager.Store(userCreated, EventProviderType.MessageBroker, eventPath);
         
         return Ok();
     }
@@ -77,10 +75,10 @@ public class UserController : ControllerBase
 
         var userDeleted = new UserDeleted { UserId = item.Id, UserName = item.Name };
         var url = "https:example.com/api/users";
-        var successfullySent = _eventSenderManager.Send(userDeleted, EventProviderType.WebHook, url);
+        var successfullySent = _outboxEventManager.Store(userDeleted, EventProviderType.WebHook, url);
         
         var eventPath = userDeleted.GetType().Name;
-        successfullySent = _eventSenderManager.Send(userDeleted, EventProviderType.MessageBroker, eventPath);
+        successfullySent = _outboxEventManager.Store(userDeleted, EventProviderType.MessageBroker, eventPath);
         
         Items.Remove(id);
         return Ok(item);

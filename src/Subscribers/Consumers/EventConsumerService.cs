@@ -218,13 +218,13 @@ internal class EventConsumerService : IEventConsumerService
 
         void StoreEventToInbox(IServiceProvider serviceProvider, SubscribersInformation subscribersInformation, Guid eventId, string eventPayload, string eventHeadersAsJson)
         {
-            var eventReceiverManager = serviceProvider.GetService<IEventReceiverManager>();
-            if (eventReceiverManager is null)
+            var inboxEventManager = serviceProvider.GetService<IInboxEventManager>();
+            if (inboxEventManager is null)
                 throw new EventBusException(
                     "The RabbitMQ is configured to use the Inbox for received events, but the Inbox functionality of the EventStorage is not enabled.");
 
             var namingPolicyType = subscribersInformation.Settings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase;
-            _ = eventReceiverManager.Received(eventId, subscribersInformation.EventTypeName, eventArgs.RoutingKey,
+            _ = inboxEventManager.Store(eventId, subscribersInformation.EventTypeName, eventArgs.RoutingKey,
                 EventProviderType.MessageBroker, payload: eventPayload, headers: eventHeadersAsJson,
                 namingPolicyType: namingPolicyType);
         }

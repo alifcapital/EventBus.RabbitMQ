@@ -4,9 +4,9 @@ using EventStorage.Inbox.Models;
 namespace EventBus.RabbitMQ.Subscribers.Models;
 
 /// <summary>
-/// Base interface for all subscriber classes
+/// The base interface for all subscriber classes.
 /// </summary>
-public interface ISubscribeEvent : IBaseEvent, IReceiveEvent
+public interface ISubscribeEvent : IBaseEvent, IInboxEvent
 {
     /// <summary>
     /// The id of event

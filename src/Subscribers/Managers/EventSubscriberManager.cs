@@ -126,9 +126,9 @@ internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceP
     }
 
     /// <summary>
-    /// For handling the ExecutingReceivedEvent event and execute the ExecutingSubscribedEvent event if the  
+    /// For handling the ExecutingInboxEvent event and execute the ExecutingSubscribedEvent event if the  
     /// </summary>
-    public static void HandleExecutingReceivedEvent(object sender, ReceivedEventArgs e)
+    public static void HandleExecutingInboxEvent(object sender, InboxEventArgs e)
     {
         if (e.ProviderType == EventProviderType.MessageBroker)
         {

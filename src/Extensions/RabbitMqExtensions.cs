@@ -3,6 +3,7 @@ using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
 using EventBus.RabbitMQ.Publishers.Managers;
+using EventBus.RabbitMQ.Publishers.Messaging;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using EventBus.RabbitMQ.Subscribers.Consumers;
@@ -40,18 +41,21 @@ public static class RabbitMqExtensions
         Action<EventSubscriberManagerOptions> eventSubscriberManagerOptions = null,
         Action<InboxAndOutboxOptions> eventStoreOptions = null,
         EventHandler<SubscribedMessageBrokerEventArgs> executingSubscribedEvent = null,
-        EventHandler<ReceivedEventArgs> executingReceivedEvent = null)
+        EventHandler<InboxEventArgs> executingReceivedEvent = null)
     {
-        var eventsToSubscribe = new List<EventHandler<ReceivedEventArgs>>();
+        var eventsToSubscribe = new List<EventHandler<InboxEventArgs>>();
         if (executingReceivedEvent is not null)
             eventsToSubscribe.Add(executingReceivedEvent);
         
         if (executingSubscribedEvent is not null)
         {
             EventSubscriberManager.ExecutingSubscribedEvent += executingSubscribedEvent;
-            eventsToSubscribe.Add(EventSubscriberManager.HandleExecutingReceivedEvent);
+            eventsToSubscribe.Add(EventSubscriberManager.HandleExecutingInboxEvent);
         }
-        services.AddEventStore(configuration, assemblies: assemblies, options: eventStoreOptions, executingReceivedEvents: eventsToSubscribe.ToArray());
+        
+        var currentAssembly = typeof(MessageBrokerEventPublisher).Assembly;
+        var assembliesToLoadEventForEventStore = assemblies.Concat([currentAssembly]).ToArray();
+        services.AddEventStore(configuration, assemblies: assembliesToLoadEventForEventStore, options: eventStoreOptions, executingReceivedEvents: eventsToSubscribe.ToArray());
 
         var settings = configuration.GetSection(nameof(RabbitMqSettings)).Get<RabbitMqSettings>() ??
                        new RabbitMqSettings();
