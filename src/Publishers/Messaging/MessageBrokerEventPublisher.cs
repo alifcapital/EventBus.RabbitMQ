@@ -15,7 +15,7 @@ internal class MessageBrokerEventPublisher(IEventPublisherManager eventPublisher
     public async Task PublishAsync(IOutboxEvent @event, string eventPath)
     {
         if(eventPublisher == null)
-            throw new EventBusException($"There is an outbox event with ID '{@event.EventId}' ready to be published through the message broker, but RabbitMQ is not enabled.");
+            throw new EventBusException("There is an outbox event ready to be published through the message broker, but RabbitMQ is not enabled.");
         
         eventPublisher.Publish((IPublishEvent)@event);
         await Task.CompletedTask;
