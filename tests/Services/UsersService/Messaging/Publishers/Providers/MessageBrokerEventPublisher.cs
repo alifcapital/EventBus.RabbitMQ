@@ -6,9 +6,9 @@
 // /// </summary>
 // public class MessageBrokerEventPublisher(IEventPublisherManager eventPublisher) : IMessageBrokerEventPublisher
 // {
-//     public async Task PublishAsync(ISendEvent @event, string eventPath)
+//     public async Task PublishAsync(IOutboxEvent outboxEvent)
 //     {
-//         eventPublisher.Publish((IPublishEvent)@event);
+//         eventPublisher.Publish((IPublishEvent)outboxEvent);
 //         
 //         await Task.CompletedTask;
 //     }
