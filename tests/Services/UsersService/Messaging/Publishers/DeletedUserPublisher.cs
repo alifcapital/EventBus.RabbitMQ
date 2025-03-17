@@ -12,7 +12,7 @@ public class DeletedUserPublisher : IWebHookEventPublisher<UserDeleted>
     //     _webHookProvider = webHookProvider;
     // }
 
-    public async Task PublishAsync(UserDeleted @event, string eventPath)
+    public async Task PublishAsync(UserDeleted userDeleted)
     {
         //Add your logic
         await Task.CompletedTask;
