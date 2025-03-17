@@ -224,8 +224,11 @@ internal class EventConsumerService : IEventConsumerService
                     "The RabbitMQ is configured to use the Inbox for received events, but the Inbox functionality of the EventStorage is not enabled.");
 
             var namingPolicyType = subscribersInformation.Settings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase;
-            _ = inboxEventManager.Store(eventId, subscribersInformation.EventTypeName, eventArgs.RoutingKey,
-                EventProviderType.MessageBroker, payload: eventPayload, headers: eventHeadersAsJson,
+            _ = inboxEventManager.Store(eventId, subscribersInformation.EventTypeName,
+                EventProviderType.MessageBroker, 
+                payload: eventPayload, 
+                headers: eventHeadersAsJson,
+                eventPath: eventArgs.RoutingKey,
                 namingPolicyType: namingPolicyType);
         }
 

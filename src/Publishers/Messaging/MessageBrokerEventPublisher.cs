@@ -12,12 +12,12 @@ namespace EventBus.RabbitMQ.Publishers.Messaging;
 /// <param name="eventPublisher">The event publisher manager to publish the event to the RabbitMQ message broker.</param>
 internal class MessageBrokerEventPublisher(IEventPublisherManager eventPublisher = null) : IMessageBrokerEventPublisher
 {
-    public async Task PublishAsync(IOutboxEvent @event, string eventPath)
+    public async Task PublishAsync(IOutboxEvent outboxEvent)
     {
         if(eventPublisher == null)
             throw new EventBusException("There is an outbox event ready to be published through the message broker, but RabbitMQ is not enabled.");
         
-        eventPublisher.Publish((IPublishEvent)@event);
+        eventPublisher.Publish((IPublishEvent)outboxEvent);
         await Task.CompletedTask;
     }
 }

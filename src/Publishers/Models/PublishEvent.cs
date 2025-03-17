@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace EventBus.RabbitMQ.Publishers.Models;
 
 /// <summary>
@@ -7,16 +5,9 @@ namespace EventBus.RabbitMQ.Publishers.Models;
 /// </summary>
 public abstract record PublishEvent : IPublishEvent
 {
-    protected PublishEvent()
-    {
-        EventId = Guid.CreateVersion7();
-        CreatedAt = DateTime.Now;
-    }
+    public Guid EventId { get; init; } = Guid.CreateVersion7();
 
-    public Guid EventId { get; init; }
+    public DateTime CreatedAt { get; init; } = DateTime.Now;
 
-    public DateTime CreatedAt { get; init; }
-
-    [JsonIgnore]
     public Dictionary<string, string> Headers { get; set; }
 }

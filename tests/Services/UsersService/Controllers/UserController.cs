@@ -46,8 +46,7 @@ public class UserController : ControllerBase
         var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
         //_eventPublisherManager.Publish(userCreated);
         
-        var eventPath = userCreated.GetType().Name;
-        var successfullySent = _outboxEventManager.Store(userCreated, EventProviderType.MessageBroker, eventPath);
+        var successfullySent = _outboxEventManager.Store(userCreated, EventProviderType.MessageBroker);
         
         return Ok();
     }
@@ -74,11 +73,8 @@ public class UserController : ControllerBase
             return NotFound();
 
         var userDeleted = new UserDeleted { UserId = item.Id, UserName = item.Name };
-        var url = "https:example.com/api/users";
-        var successfullySent = _outboxEventManager.Store(userDeleted, EventProviderType.WebHook, url);
-        
-        var eventPath = userDeleted.GetType().Name;
-        successfullySent = _outboxEventManager.Store(userDeleted, EventProviderType.MessageBroker, eventPath);
+        var successfullySent = _outboxEventManager.Store(userDeleted, EventProviderType.WebHook);
+        successfullySent = _outboxEventManager.Store(userDeleted, EventProviderType.MessageBroker);
         
         Items.Remove(id);
         return Ok(item);
