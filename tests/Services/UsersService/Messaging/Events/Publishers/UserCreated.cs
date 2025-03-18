@@ -10,6 +10,5 @@ public record UserCreated : PublishEvent, IHasAdditionalData
     
     public string UserName { get; init; }
     
-    [JsonIgnore]
     public Dictionary<string, string> AdditionalData { get; set; }
 }

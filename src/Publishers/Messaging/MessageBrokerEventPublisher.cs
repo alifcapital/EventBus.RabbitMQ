@@ -14,10 +14,14 @@ internal class MessageBrokerEventPublisher(IEventPublisherManager eventPublisher
 {
     public async Task PublishAsync(IOutboxEvent outboxEvent)
     {
-        if(eventPublisher == null)
-            throw new EventBusException("There is an outbox event ready to be published through the message broker, but RabbitMQ is not enabled.");
-        
-        eventPublisher.Publish((IPublishEvent)outboxEvent);
+        if (eventPublisher == null)
+            throw new EventBusException(
+                "There is an outbox event ready to be published through the message broker, but RabbitMQ is not enabled.");
+
+        if (outboxEvent is not IPublishEvent publishEvent)
+            return; //TODO: https://linear.app/alif-techtj/issue/ACM1-574 The global event publisher should not be executed if the event is not a publish event.
+
+        eventPublisher.Publish(publishEvent);
         await Task.CompletedTask;
     }
 }

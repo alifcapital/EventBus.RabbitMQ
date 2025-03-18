@@ -5,7 +5,7 @@ using UsersService.Repositories;
 using UsersService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Logging.AddConfiguration(builder.Configuration.GetSection("Logging"));
+builder.Services.AddLogging();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<UserContext>(op => op.UseNpgsql(connectionString));
