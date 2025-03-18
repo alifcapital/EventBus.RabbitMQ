@@ -44,9 +44,10 @@ public class UserController : ControllerBase
         Items.Add(item.Id, item);
 
         var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
+
         //_eventPublisherManager.Publish(userCreated);
         
-        var successfullySent = _outboxEventManager.Store(userCreated, EventProviderType.MessageBroker);
+        var successfullySent = _outboxEventManager.Store(userCreated);
         
         return Ok();
     }

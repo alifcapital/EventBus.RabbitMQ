@@ -4,7 +4,7 @@ using UsersService.Messaging.Events.Publishers;
 
 namespace UsersService.Messaging.Publishers;
 
-public class CreatedUserPublisher(IEventPublisherManager eventPublisher) : IMessageBrokerEventPublisher<UserCreated>
+public class CreatedUserPublisher(IEventPublisherManager eventPublisher) : ISmsEventPublisher<UserCreated>
 {
     public async Task PublishAsync(UserCreated userCreated)
     {
