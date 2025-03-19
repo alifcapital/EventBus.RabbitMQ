@@ -6,8 +6,8 @@ using Microsoft.Extensions.Logging;
 namespace EventBus.RabbitMQ;
 
 internal class StartEventBusServices(
-    IEventSubscriberManager subscriberManager,
-    IEventPublisherManager publisherManager,
+    IEventSubscriberCollector subscriberCollector,
+    IEventPublisherCollector publisherCollector,
     ILogger<StartEventBusServices> logger)
     : BackgroundService
 {
@@ -15,8 +15,8 @@ internal class StartEventBusServices(
     {
         try
         {
-            publisherManager.CreateExchangeForPublishers();
-            subscriberManager.CreateConsumerForEachQueueAndStartReceivingEvents();
+            publisherCollector.CreateExchangeForPublishers();
+            subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEvents();
         }
         catch (Exception e)
         {

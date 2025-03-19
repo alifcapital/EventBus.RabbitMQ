@@ -22,8 +22,8 @@ public class RabbitMqExtensionsTests : BaseTestEntity
         _serviceProvider = Substitute.For<IServiceProvider>();
         _serviceProvider.GetService(typeof(RabbitMqOptions))
             .Returns(RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions());
-        _serviceProvider.GetService(typeof(ILogger<EventPublisherManager>))
-            .Returns(Substitute.For<ILogger<EventPublisherManager>>());
+        _serviceProvider.GetService(typeof(ILogger<EventPublisherCollector>))
+            .Returns(Substitute.For<ILogger<EventPublisherCollector>>());
         _rabbitMqConnectionCreator = Substitute.For<IRabbitMqConnectionCreator>();
         _serviceProvider.GetService(typeof(IRabbitMqConnectionCreator)).Returns(_rabbitMqConnectionCreator);
     }
@@ -42,7 +42,7 @@ public class RabbitMqExtensionsTests : BaseTestEntity
         var result = RabbitMqExtensions.GetPublisherTypes(
             [
                 typeof(RabbitMqExtensionsTests).Assembly,
-                typeof(EventPublisherManager).Assembly
+                typeof(EventPublisherCollector).Assembly
             ]
         );
 
@@ -67,7 +67,7 @@ public class RabbitMqExtensionsTests : BaseTestEntity
         var result = RabbitMqExtensions.GetSubscriberReceiverTypes(
             [
                 typeof(RabbitMqExtensionsTests).Assembly,
-                typeof(EventPublisherManager).Assembly
+                typeof(EventPublisherCollector).Assembly
             ]
         );
 
