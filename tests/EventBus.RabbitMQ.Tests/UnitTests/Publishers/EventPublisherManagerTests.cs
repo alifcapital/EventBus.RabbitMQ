@@ -18,6 +18,12 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherCollector = Substitute.For<IEventPublisherCollector>();
         _publisherManager = new EventPublisherManager(logger, _publisherCollector);
     }
+    
+    [TearDown]
+    public void TearDown()
+    {
+        _publisherManager.Dispose();
+    }
 
     #endregion
     

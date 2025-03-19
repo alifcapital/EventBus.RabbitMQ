@@ -1,7 +1,7 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
-using EventBus.RabbitMQ.Exceptions;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Publishers.Models;
 using Microsoft.Extensions.Logging;
@@ -13,12 +13,66 @@ internal class EventPublisherManager(
     ILogger<EventPublisherManager> logger,
     IEventPublisherCollector eventPublisherCollector = null) : IEventPublisherManager
 {
+    private readonly ConcurrentDictionary<Guid, IPublishEvent> _eventsToPublish = [];
+
+    #region PublishAsync
+
     public async Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent)
         where TPublishEvent : class, IPublishEvent
     {
+        await Task.Run(() => { PublishEventToRabbitMq(publishEvent); });
+    }
+
+    #endregion
+
+    #region Collect
+
+    public void Collect<TPublishEvent>(TPublishEvent publishEvent) where TPublishEvent : class, IPublishEvent
+    {
+        if (_eventsToPublish.ContainsKey(publishEvent.EventId))
+            _eventsToPublish.TryAdd(publishEvent.EventId, publishEvent);
+    }
+
+    #endregion
+
+    #region CleanCollectedEvents
+
+    public void CleanCollectedEvents()
+    {
+        _eventsToPublish.Clear();
+    }
+
+    #endregion
+
+    #region PublishCollectedEvents
+
+    /// <summary>
+    /// Publish all collected events to the RabbitMQ.
+    /// </summary>
+    private void PublishCollectedEvents()
+    {
+        foreach (var eventToPublish in _eventsToPublish.Values)
+            PublishEventToRabbitMq(eventToPublish);
+
+        CleanCollectedEvents();
+    }
+
+    #endregion
+
+    #region PublishEventToRabbitMq
+
+    /// <summary>
+    /// Publish an event to the RabbitMQ. If the RabbitMQ is not enabled, it will log a warning and return.
+    /// </summary>
+    private void PublishEventToRabbitMq<TPublishEvent>(TPublishEvent publishEvent)
+        where TPublishEvent : class, IPublishEvent
+    {
         if (eventPublisherCollector == null)
-            throw new EventBusException(
+        {
+            logger.LogWarning(
                 "There is an event ready to be published through the message broker, but RabbitMQ is not enabled.");
+            return;
+        }
 
         try
         {
@@ -62,15 +116,43 @@ internal class EventPublisherManager(
             }
 
             var messageBody = Encoding.UTF8.GetBytes(payload);
-            await Task.Run(() =>
-            {
-                channel.BasicPublish(eventSettings.VirtualHostSettings.ExchangeName, eventSettings.RoutingKey,
-                    properties, messageBody);
-            });
+            channel.BasicPublish(eventSettings.VirtualHostSettings.ExchangeName, eventSettings.RoutingKey,
+                properties, messageBody);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error while opening the RabbitMQ connection");
+            logger.LogError(ex, "Error while opening the RabbitMQ connection or publishing the event.");
         }
     }
+
+    #endregion
+
+    #region Dispose
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        Disposing();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Publish all collected events to the RabbitMQ before disposing the object.
+    /// </summary>
+    private void Disposing()
+    {
+        if (_disposed) return;
+
+        PublishCollectedEvents();
+
+        _disposed = true;
+    }
+
+    ~EventPublisherManager()
+    {
+        Disposing();
+    }
+
+    #endregion
 }
