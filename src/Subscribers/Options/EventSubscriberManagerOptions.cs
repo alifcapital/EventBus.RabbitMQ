@@ -5,11 +5,11 @@ namespace EventBus.RabbitMQ.Subscribers.Options;
 
 public class EventSubscriberManagerOptions
 {
-    private readonly EventSubscriberCollector _subscriberCollector;
+    private readonly EventSubscriberManager _subscriberManager;
 
-    internal EventSubscriberManagerOptions(EventSubscriberCollector subscriberCollector)
+    internal EventSubscriberManagerOptions(EventSubscriberManager subscriberManager)
     {
-        _subscriberCollector = subscriberCollector;
+        _subscriberManager = subscriberManager;
     }
 
     /// <summary>
@@ -22,6 +22,6 @@ public class EventSubscriberManagerOptions
         where TEvent : class, ISubscribeEvent
         where TEventHandler : class, IEventSubscriber<TEvent>
     {
-        _subscriberCollector.AddSubscriber<TEvent, TEventHandler>(options);
+        _subscriberManager.AddSubscriber<TEvent, TEventHandler>(options);
     }
 }

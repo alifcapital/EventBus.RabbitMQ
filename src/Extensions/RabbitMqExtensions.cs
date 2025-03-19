@@ -49,8 +49,8 @@ public static class RabbitMqExtensions
         
         if (executingSubscribedEvent is not null)
         {
-            EventSubscriberCollector.ExecutingSubscribedEvent += executingSubscribedEvent;
-            eventsToSubscribe.Add(EventSubscriberCollector.HandleExecutingInboxEvent);
+            EventSubscriberManager.ExecutingSubscribedEvent += executingSubscribedEvent;
+            eventsToSubscribe.Add(EventSubscriberManager.HandleExecutingInboxEvent);
         }
         
         var currentAssembly = typeof(MessageBrokerEventPublisher).Assembly;
@@ -60,7 +60,6 @@ public static class RabbitMqExtensions
         var settings = configuration.GetSection(nameof(RabbitMqSettings)).Get<RabbitMqSettings>() ??
                        new RabbitMqSettings();
         LoadDefaultRabbitMqOptions(settings, defaultOptions);
-        services.AddScoped<IEventPublisherManager, EventPublisherManager>();
         
         if (!settings.DefaultSettings.IsEnabled) return;
 
@@ -70,9 +69,9 @@ public static class RabbitMqExtensions
 
         AddOrUpdateVirtualHostSettings(settings, virtualHostSettingsOptions);
 
-        services.AddSingleton<IEventPublisherCollector>(serviceProvider =>
+        services.AddSingleton<IEventPublisherManager>(serviceProvider =>
         {
-            var publisherManager = new EventPublisherCollector(serviceProvider);
+            var publisherManager = new EventPublisherManager(serviceProvider);
 
             var publishers = settings.Publishers ?? new Dictionary<string, EventPublisherOptions>();
             var allPublisherTypes = GetPublisherTypes(assemblies);
@@ -88,9 +87,9 @@ public static class RabbitMqExtensions
 
         RegisterAllSubscriberReceiversToDependencyInjection(services, assemblies);
 
-        services.AddSingleton<IEventSubscriberCollector>(serviceProvider =>
+        services.AddSingleton<IEventSubscriberManager>(serviceProvider =>
         {
-            var subscriberManager = new EventSubscriberCollector(settings.DefaultSettings, serviceProvider);
+            var subscriberManager = new EventSubscriberManager(settings.DefaultSettings, serviceProvider);
 
             var subscribers = settings.Subscribers ?? new Dictionary<string, EventSubscriberOptions>();
             RegisterAllSubscribers(subscriberManager, assemblies, subscribers);
@@ -163,15 +162,15 @@ public static class RabbitMqExtensions
         return [];
     }
 
-    private static void RegisterAllPublishers(EventPublisherCollector publisherCollector,
+    private static void RegisterAllPublishers(EventPublisherManager publisherManager,
         Type[] publisherTypes, Dictionary<string, EventPublisherOptions> publishersOptions)
     {
         foreach (var typeOfPublisher in publisherTypes)
         {
             if (publishersOptions.TryGetValue(typeOfPublisher.Name, out var settings))
-                publisherCollector.AddPublisher(typeOfPublisher, settings);
+                publisherManager.AddPublisher(typeOfPublisher, settings);
             else
-                publisherCollector.AddPublisher(typeOfPublisher, new EventPublisherOptions());
+                publisherManager.AddPublisher(typeOfPublisher, new EventPublisherOptions());
         }
     }
 
@@ -196,7 +195,7 @@ public static class RabbitMqExtensions
 
     #region Subscribers
 
-    private static void RegisterAllSubscribers(EventSubscriberCollector subscriberCollector,
+    private static void RegisterAllSubscribers(EventSubscriberManager subscriberManager,
         Assembly[] assemblies, Dictionary<string, EventSubscriberOptions> subscribersOptions)
     {
         var subscriberReceiverTypes = GetSubscriberReceiverTypes(assemblies);
@@ -204,9 +203,9 @@ public static class RabbitMqExtensions
         foreach (var (eventType, handlerType) in subscriberReceiverTypes)
         {
             if (subscribersOptions.TryGetValue(eventType.Name, out var settings))
-                subscriberCollector.AddSubscriber(eventType, handlerType, settings);
+                subscriberManager.AddSubscriber(eventType, handlerType, settings);
             else
-                subscriberCollector.AddSubscriber(eventType, handlerType, new EventSubscriberOptions());
+                subscriberManager.AddSubscriber(eventType, handlerType, new EventSubscriberOptions());
         }
     }
 

@@ -3,10 +3,7 @@ using EventBus.RabbitMQ.Subscribers.Options;
 
 namespace EventBus.RabbitMQ.Subscribers.Managers;
 
-/// <summary>
-/// This interface is responsible for collecting all the subscriber information and create a consumer for each queue.
-/// </summary>
-internal interface IEventSubscriberCollector
+internal interface IEventSubscriberManager
 {
     /// <summary>
     /// Registers a subscriber 

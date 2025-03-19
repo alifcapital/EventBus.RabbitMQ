@@ -8,8 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBus.RabbitMQ.Subscribers.Managers;
 
-internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServiceProvider serviceProvider)
-    : IEventSubscriberCollector
+internal class EventSubscriberManager(RabbitMqOptions defaultSettings, IServiceProvider serviceProvider)
+    : IEventSubscriberManager
 {
     /// <summary>
     /// The event to be executed before executing the subscriber of the received event.

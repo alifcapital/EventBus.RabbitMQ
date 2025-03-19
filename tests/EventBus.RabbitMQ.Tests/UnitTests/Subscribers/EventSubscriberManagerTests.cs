@@ -10,10 +10,10 @@ using NSubstitute;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Subscribers;
 
-public class EventSubscriberCollectorTests : BaseTestEntity
+public class EventSubscriberManagerTests : BaseTestEntity
 {
     private IServiceProvider _serviceProvider;
-    private EventSubscriberCollector _subscriberCollector;
+    private EventSubscriberManager _subscriberManager;
 
     #region SutUp
 
@@ -22,7 +22,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
     {
         var settings = RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions();
         _serviceProvider = Substitute.For<IServiceProvider>();
-        _subscriberCollector = new EventSubscriberCollector(settings, _serviceProvider);
+        _subscriberManager = new EventSubscriberManager(settings, _serviceProvider);
     }
 
     #endregion
@@ -35,7 +35,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         var queueName = "TestQueue";
         var options = new Action<EventSubscriberOptions>(x => { x.QueueName = queueName; });
 
-        _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
 
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
@@ -47,8 +47,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
     {
         var typeOfEvent = typeof(SimpleSubscribeEvent);
         var typeOfHandler = typeof(SimpleEventSubscriberHandler);
-        _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>();
-        _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>();
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>();
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>();
 
         var subscribers = GetSubscribers();
         Assert.That(subscribers.ContainsKey(typeOfEvent.Name), Is.True);
@@ -67,8 +67,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         var newQueueName = "TestQueueUpdated";
         var options = new Action<EventSubscriberOptions>(x => { x.QueueName = "TestQueue"; });
 
-        _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
-        _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(x =>
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(x =>
         {
             x.QueueName = newQueueName;
         });
@@ -87,7 +87,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
             QueueName = "TestQueue",
         };
 
-        _subscriberCollector.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), options);
+        _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), options);
 
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
@@ -100,8 +100,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         var typeOfEvent = typeof(SimpleSubscribeEvent);
         var typeOfHandler = typeof(SimpleEventSubscriberHandler);
         var options = new EventSubscriberOptions();
-        _subscriberCollector.AddSubscriber(typeOfEvent, typeOfHandler, options);
-        _subscriberCollector.AddSubscriber(typeOfEvent, typeOfHandler, options);
+        _subscriberManager.AddSubscriber(typeOfEvent, typeOfHandler, options);
+        _subscriberManager.AddSubscriber(typeOfEvent, typeOfHandler, options);
 
         var subscribers = GetSubscribers();
         Assert.That(subscribers.ContainsKey(typeOfEvent.Name), Is.True);
@@ -123,8 +123,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
             QueueName = "TestQueue",
         };
 
-        _subscriberCollector.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), options);
-        _subscriberCollector.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler),
+        _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), options);
+        _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler),
             new EventSubscriberOptions
             {
                 QueueName = newQueueName
@@ -138,7 +138,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
     [Test]
     public void AddSubscriber_CallingWithTypesAndWithDefaultSettings_ShouldAdded()
     {
-        _subscriberCollector.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler),
+        _subscriberManager.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler),
             new EventSubscriberOptions());
         
         var subscribers = GetSubscribers();
@@ -165,9 +165,9 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         };
 
         var options = new Action<EventSubscriberOptions>(x => { x.VirtualHostKey = "TestVirtualHostKey"; });
-        _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
 
-        _subscriberCollector.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
+        _subscriberManager.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
 
         var subscribers = GetSubscribers();
         subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
@@ -209,10 +209,10 @@ public class EventSubscriberCollectorTests : BaseTestEntity
             )
             .Returns(eventConsumer);
 
-        _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
-        _subscriberCollector.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
+        _subscriberManager.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
+        _subscriberManager.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
 
-        _subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEvents();
+        _subscriberManager.CreateConsumerForEachQueueAndStartReceivingEvents();
 
         var eventConsumers = GetEventConsumerServices();
 
@@ -230,12 +230,12 @@ public class EventSubscriberCollectorTests : BaseTestEntity
 
     #region Helper method
 
-    private static readonly FieldInfo SubscribersProperty = typeof(EventSubscriberCollector)
+    private static readonly FieldInfo SubscribersProperty = typeof(EventSubscriberManager)
         .GetField("Subscribers", BindingFlags.NonPublic | BindingFlags.Static);
     
     Dictionary<string, SubscribersInformation> GetSubscribers()
     {
-        var eventSubscriberManager = typeof(EventSubscriberCollector);
+        var eventSubscriberManager = typeof(EventSubscriberManager);
         var subscribers =
             (Dictionary<string, SubscribersInformation>)
             SubscribersProperty?.GetValue(eventSubscriberManager)!;
@@ -243,14 +243,14 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         return subscribers;
     }
 
-    private readonly FieldInfo _eventConsumersField = typeof(EventSubscriberCollector)
+    private readonly FieldInfo _eventConsumersField = typeof(EventSubscriberManager)
         .GetField("_eventConsumers", BindingFlags.NonPublic | BindingFlags.Instance);
 
     private Dictionary<string, IEventConsumerService> GetEventConsumerServices()
     {
         _eventConsumersField.Should().NotBeNull();
         var eventConsumers =
-            (Dictionary<string, IEventConsumerService>)_eventConsumersField?.GetValue(_subscriberCollector)!;
+            (Dictionary<string, IEventConsumerService>)_eventConsumersField?.GetValue(_subscriberManager)!;
         return eventConsumers;
     }
 
