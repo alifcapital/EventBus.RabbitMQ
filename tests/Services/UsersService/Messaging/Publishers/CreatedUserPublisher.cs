@@ -8,8 +8,6 @@ public class CreatedUserPublisher(IEventPublisherManager eventPublisher) : ISmsE
 {
     public async Task PublishAsync(UserCreated userCreated)
     {
-        eventPublisher.Publish(userCreated);
-        //Add you logic
-        await Task.CompletedTask;
+        await eventPublisher.PublishAsync(userCreated);
     }
 }
