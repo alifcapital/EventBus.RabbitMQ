@@ -209,7 +209,7 @@ internal class EventConsumerService : IEventConsumerService
                 receivedEvent!.EventId = eventId;
                 receivedEvent!.Headers = headers;
 
-                EventSubscriberManager.OnExecutingSubscribedEvent(receivedEvent, virtualHost, serviceProvider);
+                EventSubscriberCollector.OnExecutingSubscribedEvent(receivedEvent, virtualHost, serviceProvider);
 
                 var eventHandlerSubscriber = serviceProvider.GetRequiredService(subscriber.EventSubscriberType);
                 await ((Task)subscriber.HandleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;
