@@ -33,6 +33,7 @@ public class EventPublisherManagerTests : BaseTestEntity
 
     #endregion
 
+
     #region AddPublisher
 
     [Test]
@@ -45,7 +46,11 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherManager.AddPublisher<SimplePublishEvent>(options);
 
         // Assert
-        var publishers = GetPublishersInfo();
+        var field = _publisherManager.GetType()
+            .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
+        field.Should().NotBeNull();
+        var publishers = (Dictionary<string, EventPublisherOptions>)field?.GetValue(_publisherManager)!;
+
         publishers.Should().ContainKey(nameof(SimplePublishEvent));
         publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKey");
     }
@@ -61,7 +66,11 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherManager.AddPublisher<SimplePublishEvent>(x => { x.RoutingKey = "TestRoutingKeyUpdated"; });
 
         // Assert
-        var publishers = GetPublishersInfo();
+        var field = _publisherManager.GetType()
+            .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
+        field.Should().NotBeNull();
+        var publishers = (Dictionary<string, EventPublisherOptions>)field?.GetValue(_publisherManager)!;
+
         publishers.Should().ContainKey(nameof(SimplePublishEvent));
         publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKeyUpdated");
     }
@@ -80,12 +89,17 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherManager.AddPublisher(typeOfPublisher, publisherSettings);
 
         // Assert
-        var publishers = GetPublishersInfo();
+        var field = _publisherManager.GetType()
+            .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
+        field.Should().NotBeNull();
+        var publishers = (Dictionary<string, EventPublisherOptions>)field?.GetValue(_publisherManager)!;
+
         publishers.Should().ContainKey(nameof(SimplePublishEvent));
         publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKey");
     }
 
     #endregion
+
 
     #region SetVirtualHostAndOwnSettingsOfPublishers
 
@@ -111,12 +125,17 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherManager.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
 
         // Assert
-        var publishers = GetPublishersInfo();
+        var field = _publisherManager.GetType()
+            .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
+        field.Should().NotBeNull();
+        var publishers = (Dictionary<string, EventPublisherOptions>)field?.GetValue(_publisherManager)!;
+
         publishers.Should().ContainKey(nameof(SimplePublishEvent));
         publishers!.First().Value.VirtualHostSettings.VirtualHost.Should().Be("TestVirtualHost");
     }
 
     #endregion
+
 
     #region CreateExchangeForPublishers
 
@@ -157,10 +176,11 @@ public class EventPublisherManagerTests : BaseTestEntity
 
     #endregion
 
+
     #region Publish
 
     [Test]
-    public async Task Publish_PublishingWithOptionsWithRoutingKey_ShouldCreatedConnection()
+    public void Publish_PublishingWithOptionsWithRoutingKey_ShouldCreatedConnection()
     {
         // Arrange
         var options = new Action<EventPublisherOptions>(x => { x.RoutingKey = "TestRoutingKey"; });
@@ -187,7 +207,7 @@ public class EventPublisherManagerTests : BaseTestEntity
         };
 
         // Act
-        await _publisherManager.PublishAsync(@event);
+        _publisherManager.Publish(@event);
 
         // Assert
         var field = _publisherManager.GetType()
@@ -198,18 +218,5 @@ public class EventPublisherManagerTests : BaseTestEntity
         openedRabbitMqConnections?.Count.Should().Be(1);
     }
 
-    #endregion
-    
-    #region Helper methods
-    
-    private static readonly FieldInfo PublishersField = typeof(EventPublisherManager)
-        .GetField("_publishersConnectionInfo", BindingFlags.NonPublic | BindingFlags.Instance);
-    
-    Dictionary<string, EventPublisherOptions> GetPublishersInfo()
-    {
-        var publishers = (Dictionary<string, EventPublisherOptions>)PublishersField?.GetValue(_publisherManager)!;
-        return publishers;
-    }
-    
     #endregion
 }

@@ -5,7 +5,7 @@ using UsersService.Repositories;
 using UsersService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddLogging(p => p.AddConsole());
+builder.Services.AddLogging();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<UserContext>(op => op.UseNpgsql(connectionString));
@@ -20,9 +20,11 @@ builder.Services.AddRabbitMqEventBus(builder.Configuration,
     },
     eventStoreOptions: options =>
     {
-        // options.Inbox.IsEnabled = true;
+        options.Inbox.IsEnabled = true;
+        options.Inbox.TableName = "ReceivedEvents";
         options.Inbox.ConnectionString = connectionString;
-        // options.Outbox.IsEnabled = true;
+        options.Outbox.IsEnabled = true;
+        options.Outbox.TableName = "SentEvents";
         options.Outbox.ConnectionString = connectionString;
     }
 );
