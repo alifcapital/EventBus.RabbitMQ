@@ -12,7 +12,7 @@ namespace UsersService.Controllers;
 public class UserController : ControllerBase
 {
     private readonly IEventPublisherManager _eventPublisherManager;
-    private readonly IOutboxEventManager  _outboxEventManager;
+    private readonly IOutboxEventManager _outboxEventManager;
 
     private static readonly Dictionary<Guid, User> Items = new();
 
@@ -39,7 +39,7 @@ public class UserController : ControllerBase
     }
 
     [HttpPost]
-    public IActionResult Create([FromBody] User item)
+    public async Task<IActionResult> Create([FromBody] User item)
     {
         Items.Add(item.Id, item);
 
@@ -47,14 +47,14 @@ public class UserController : ControllerBase
 
         //_eventPublisherManager.Publish(userCreated);
         var test = new TestEvent { EventId = Guid.NewGuid() };
-         //var sent = _outboxEventManager.Store(test);
-        var successfullySent = _outboxEventManager.Store(userCreated);
-        
+        //var sent = await _outboxEventManager.StoreAsync(test);
+        var successfullySent = await _outboxEventManager.StoreAsync(userCreated);
+
         return Ok();
     }
 
     [HttpPut("{id:guid}")]
-    public IActionResult Update(Guid id, [FromQuery] string newName)
+    public async Task<IActionResult> Update(Guid id, [FromQuery] string newName)
     {
         if (!Items.TryGetValue(id, out User item))
             return NotFound();
@@ -62,22 +62,21 @@ public class UserController : ControllerBase
         var userUpdated = new UserUpdated { UserId = item.Id, OldUserName = item.Name, NewUserName = newName };
         userUpdated.Headers = new();
         userUpdated.Headers.TryAdd("TraceId", HttpContext.TraceIdentifier);
-        _eventPublisherManager.Publish(userUpdated);
+        await _eventPublisherManager.PublishAsync(userUpdated);
 
         item.Name = newName;
         return Ok(item);
     }
 
     [HttpDelete("{id:guid}")]
-    public IActionResult Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid id)
     {
         if (!Items.TryGetValue(id, out User item))
             return NotFound();
 
         var userDeleted = new UserDeleted { UserId = item.Id, UserName = item.Name };
-        var successfullySent = _outboxEventManager.Store(userDeleted, EventProviderType.WebHook);
-        successfullySent = _outboxEventManager.Store(userDeleted, EventProviderType.MessageBroker);
-        
+        var successfullySent = await _outboxEventManager.StoreAsync(userDeleted, EventProviderType.MessageBroker);
+
         Items.Remove(id);
         return Ok(item);
     }

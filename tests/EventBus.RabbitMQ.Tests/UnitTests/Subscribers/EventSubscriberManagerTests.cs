@@ -243,13 +243,14 @@ public class EventSubscriberManagerTests : BaseTestEntity
         return subscribers;
     }
 
+    private readonly FieldInfo _eventConsumersField = typeof(EventSubscriberManager)
+        .GetField("_eventConsumers", BindingFlags.NonPublic | BindingFlags.Instance);
+
     private Dictionary<string, IEventConsumerService> GetEventConsumerServices()
     {
-        const string eventConsumersFieldName = "_eventConsumers";
-        var field = _subscriberManager.GetType()
-            .GetField(eventConsumersFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var eventConsumers = (Dictionary<string, IEventConsumerService>)field?.GetValue(_subscriberManager)!;
+        _eventConsumersField.Should().NotBeNull();
+        var eventConsumers =
+            (Dictionary<string, IEventConsumerService>)_eventConsumersField?.GetValue(_subscriberManager)!;
         return eventConsumers;
     }
 

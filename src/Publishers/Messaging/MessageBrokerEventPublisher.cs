@@ -21,7 +21,6 @@ internal class MessageBrokerEventPublisher(IEventPublisherManager eventPublisher
         if (outboxEvent is not IPublishEvent publishEvent)
             return; //TODO: https://linear.app/alif-techtj/issue/ACM1-574 The global event publisher should not be executed if the event is not a publish event.
 
-        eventPublisher.Publish(publishEvent);
-        await Task.CompletedTask;
+        await eventPublisher.PublishAsync(publishEvent);
     }
 }
