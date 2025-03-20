@@ -48,7 +48,7 @@ public class UserController : ControllerBase
         //_eventPublisherManager.Publish(userCreated);
         var test = new TestEvent { EventId = Guid.NewGuid() };
         //var sent = await _outboxEventManager.StoreAsync(test);
-        var successfullySent = await _outboxEventManager.StoreAsync(userCreated);
+        var successfullySent = await _outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker);
 
         return Ok();
     }
