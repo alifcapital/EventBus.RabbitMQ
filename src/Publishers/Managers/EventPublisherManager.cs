@@ -29,7 +29,7 @@ internal class EventPublisherManager(
 
     public void Collect<TPublishEvent>(TPublishEvent publishEvent) where TPublishEvent : class, IPublishEvent
     {
-        if (_eventsToPublish.ContainsKey(publishEvent.EventId))
+        if (!_eventsToPublish.ContainsKey(publishEvent.EventId))
             _eventsToPublish.TryAdd(publishEvent.EventId, publishEvent);
     }
 

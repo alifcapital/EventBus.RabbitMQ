@@ -2,7 +2,7 @@ using EventBus.RabbitMQ.Publishers.Models;
 
 namespace EventBus.RabbitMQ.Tests.Domain;
 
-public record SimplePublishEvent: PublishEvent
+public record SimplePublishEvent : PublishEvent
 {
     public Guid Id { get; set; }
     public string Name { get; set; }
