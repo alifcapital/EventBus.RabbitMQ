@@ -5,11 +5,11 @@ namespace EventBus.RabbitMQ.Publishers.Options;
 
 public class EventPublisherManagerOptions
 {
-    private readonly EventPublisherManager _publisherManager;
+    private readonly EventPublisherCollector _publisherCollector;
 
-    internal EventPublisherManagerOptions(EventPublisherManager publisherManager)
+    internal EventPublisherManagerOptions(EventPublisherCollector publisherCollector)
     {
-        _publisherManager = publisherManager;
+        _publisherCollector = publisherCollector;
     }
 
     /// <summary>
@@ -19,6 +19,6 @@ public class EventPublisherManagerOptions
     public void AddPublisher<TPublisher>(Action<EventPublisherOptions> eventPublisherOptions = null)
         where TPublisher : class, IPublishEvent
     {
-        _publisherManager.AddPublisher<TPublisher>(eventPublisherOptions);
+        _publisherCollector.AddPublisher<TPublisher>(eventPublisherOptions);
     }
 }

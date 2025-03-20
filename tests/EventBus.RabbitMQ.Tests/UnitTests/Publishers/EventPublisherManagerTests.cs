@@ -1,221 +1,182 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
-using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Publishers.Managers;
+using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Publishers;
 
 public class EventPublisherManagerTests : BaseTestEntity
 {
-    private IServiceProvider _serviceProvider;
+    private IEventPublisherCollector _publisherCollector;
     private EventPublisherManager _publisherManager;
-    private IRabbitMqConnectionCreator _rabbitMqConnectionCreator;
 
     #region SetUp
 
     [SetUp]
     public void Setup()
     {
-        _serviceProvider = Substitute.For<IServiceProvider>();
-        _serviceProvider.GetService(typeof(RabbitMqOptions))
-            .Returns(RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions());
-        _serviceProvider.GetService(typeof(ILogger<EventPublisherManager>))
-            .Returns(Substitute.For<ILogger<EventPublisherManager>>());
-        _rabbitMqConnectionCreator = Substitute.For<IRabbitMqConnectionCreator>();
-        _serviceProvider.GetService(typeof(IRabbitMqConnectionCreator)).Returns(_rabbitMqConnectionCreator);
-        _publisherManager = new EventPublisherManager(_serviceProvider);
+        var logger = Substitute.For<ILogger<EventPublisherManager>>();
+        _publisherCollector = Substitute.For<IEventPublisherCollector>();
+        _publisherManager = new EventPublisherManager(logger, _publisherCollector);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _publisherManager.Dispose();
     }
 
     #endregion
 
-
-    #region AddPublisher
-
-    [Test]
-    public void AddPublisher_CallingWithGenericAndWithOption_ShouldAdded()
-    {
-        // Arrange
-        var options = new Action<EventPublisherOptions>(x => { x.RoutingKey = "TestRoutingKey"; });
-
-        // Act
-        _publisherManager.AddPublisher<SimplePublishEvent>(options);
-
-        // Assert
-        var field = _publisherManager.GetType()
-            .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var publishers = (Dictionary<string, EventPublisherOptions>)field?.GetValue(_publisherManager)!;
-
-        publishers.Should().ContainKey(nameof(SimplePublishEvent));
-        publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKey");
-    }
+    #region PublishAsync
 
     [Test]
-    public void AddPublisher_AddingExistingEventWithNewOptions_ShouldUpdateEventOptions()
+    public async Task PublishAsync_PublishingOneEvent_ShouldBePublishedOneEvent()
     {
-        // Arrange
-        var options = new Action<EventPublisherOptions>(x => { x.RoutingKey = "TestRoutingKey"; });
-
-        // Act
-        _publisherManager.AddPublisher<SimplePublishEvent>(options);
-        _publisherManager.AddPublisher<SimplePublishEvent>(x => { x.RoutingKey = "TestRoutingKeyUpdated"; });
-
-        // Assert
-        var field = _publisherManager.GetType()
-            .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var publishers = (Dictionary<string, EventPublisherOptions>)field?.GetValue(_publisherManager)!;
-
-        publishers.Should().ContainKey(nameof(SimplePublishEvent));
-        publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKeyUpdated");
-    }
-
-    [Test]
-    public void AddPublisher_CallingWithTypeAndOptions_ShouldAdded()
-    {
-        // Arrange
-        var typeOfPublisher = typeof(SimplePublishEvent);
-        var publisherSettings = new EventPublisherOptions
+        var publishEvent = new SimplePublishEvent();
+        var eventSettings = new EventPublisherOptions();
+        var virtualHostSettings = new RabbitMqHostSettings()
         {
-            RoutingKey = "TestRoutingKey"
+            VirtualHost = "TestVirtualHost",
+            ExchangeName = "TestExchangeName"
         };
+        eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, publishEvent.GetType().Name);
+        _publisherCollector.GetPublisherSettings(publishEvent).Returns(eventSettings);
+        var channel = Substitute.For<IModel>();
+        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
 
-        // Act
-        _publisherManager.AddPublisher(typeOfPublisher, publisherSettings);
+        await _publisherManager.PublishAsync(publishEvent);
 
-        // Assert
-        var field = _publisherManager.GetType()
-            .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var publishers = (Dictionary<string, EventPublisherOptions>)field?.GetValue(_publisherManager)!;
-
-        publishers.Should().ContainKey(nameof(SimplePublishEvent));
-        publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKey");
+        _publisherCollector.Received(1).GetPublisherSettings(publishEvent);
+        _publisherCollector.Received(1).CreateRabbitMqChannel(eventSettings);
+        channel.Received(1).BasicPublish(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
+            Arg.Any<IBasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>());
     }
 
     #endregion
 
-
-    #region SetVirtualHostAndOwnSettingsOfPublishers
+    #region Collect
 
     [Test]
-    public void SetVirtualHostAndOwnSettingsOfPublishers_SettingVirtualHostAndOwnSettings_ShouldSet()
+    public void Collect_CollectingEvent_EventShouldBeCollected()
     {
-        // Arrange
-        var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
-        {
-            {
-                "TestVirtualHostKey", new RabbitMqHostSettings
-                {
-                    VirtualHost = "TestVirtualHost",
-                    ExchangeName = "TestExchangeName"
-                }
-            }
-        };
+        var publishEvent = new SimplePublishEvent();
 
-        var publisherSettings = new Action<EventPublisherOptions>(x => { x.VirtualHostKey = "TestVirtualHostKey"; });
-        _publisherManager.AddPublisher<SimplePublishEvent>(publisherSettings);
+        _publisherManager.Collect(publishEvent);
 
-        // Act
-        _publisherManager.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
+        var collectedEvents = GetCollectedEvents();
+        Assert.That(collectedEvents, Has.Count.EqualTo(1));
+        Assert.That(collectedEvents, Does.Contain(publishEvent));
+    }
 
-        // Assert
-        var field = _publisherManager.GetType()
-            .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var publishers = (Dictionary<string, EventPublisherOptions>)field?.GetValue(_publisherManager)!;
+    [Test]
+    public void Collect_CollectingSingleEventTwice_EventShouldBeCollectedOnce()
+    {
+        var publishEvent = new SimplePublishEvent();
 
-        publishers.Should().ContainKey(nameof(SimplePublishEvent));
-        publishers!.First().Value.VirtualHostSettings.VirtualHost.Should().Be("TestVirtualHost");
+        _publisherManager.Collect(publishEvent);
+        _publisherManager.Collect(publishEvent);
+
+        var collectedEvents = GetCollectedEvents();
+        Assert.That(collectedEvents, Has.Count.EqualTo(1));
+        Assert.That(collectedEvents, Does.Contain(publishEvent));
     }
 
     #endregion
 
-
-    #region CreateExchangeForPublishers
+    #region CleanCollectedEvents
 
     [Test]
-    public void CreateExchangeForPublishers_CallingWithPublisherSettings_ShouldCreateExchange()
+    public void CleanCollectedEvents_CleaningCollectedEvent_ShouldNotBeEnyItemAfterClean()
     {
-        // Arrange
-        var options = new Action<EventPublisherOptions>(x => { x.RoutingKey = "TestRoutingKey"; });
-        _publisherManager.AddPublisher<SimplePublishEvent>(options);
-        var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
-        {
-            {
-                "TestVirtualHostKey", new RabbitMqHostSettings
-                {
-                    VirtualHost = "TestVirtualHost",
-                    ExchangeName = "TestExchangeName"
-                }
-            }
-        };
-        _publisherManager.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
-        var rabbitMqConnection = Substitute.For<IRabbitMqConnection>();
-        _rabbitMqConnectionCreator.CreateConnection(Arg.Any<EventPublisherOptions>(), _serviceProvider)
-            .Returns(rabbitMqConnection);
+        var publishEvent = new SimplePublishEvent();
+        _publisherManager.Collect(publishEvent);
 
-        // Act
-        _publisherManager.CreateExchangeForPublishers();
+        _publisherManager.CleanCollectedEvents();
 
-        // Assert
-        var field = _publisherManager.GetType()
-            .GetField("_openedRabbitMqConnections", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var openedRabbitMqConnections = (Dictionary<string, IRabbitMqConnection>)field?.GetValue(_publisherManager)!;
-        _rabbitMqConnectionCreator.Received(1).CreateConnection(Arg.Any<EventPublisherOptions>(), _serviceProvider);
-        rabbitMqConnection.Received(1).CreateChannel();
-
-        openedRabbitMqConnections?.Count.Should().Be(1);
+        var collectedEvents = GetCollectedEvents();
+        Assert.That(collectedEvents, Is.Empty);
     }
 
     #endregion
 
-
-    #region Publish
+    #region Dispose
 
     [Test]
-    public void Publish_PublishingWithOptionsWithRoutingKey_ShouldCreatedConnection()
+    public void Dispose_ThereIsNoCollectedEvent_ShouldNotBePublishedAnyItem()
     {
-        // Arrange
-        var options = new Action<EventPublisherOptions>(x => { x.RoutingKey = "TestRoutingKey"; });
-        _publisherManager.AddPublisher<SimplePublishEvent>(options);
-        var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
+        _publisherManager.Dispose();
+
+        _publisherCollector.DidNotReceive().GetPublisherSettings(Arg.Any<IPublishEvent>());
+        _publisherCollector.DidNotReceive().CreateRabbitMqChannel(Arg.Any<EventPublisherOptions>());
+    }
+
+    [Test]
+    public void Dispose_ThereIsOneCollectedEvent_ShouldBePublishedOneEvent()
+    {
+        var publishEvent = new SimplePublishEvent();
+        _publisherManager.Collect(publishEvent);
+        var eventSettings = new EventPublisherOptions();
+        var virtualHostSettings = new RabbitMqHostSettings()
         {
-            {
-                "TestVirtualHostKey", new RabbitMqHostSettings
-                {
-                    VirtualHost = "TestVirtualHost",
-                    ExchangeName = "TestExchangeName"
-                }
-            }
+            VirtualHost = "TestVirtualHost",
+            ExchangeName = "TestExchangeName"
         };
-        _publisherManager.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
-        _serviceProvider.GetService(typeof(ILogger<RabbitMqConnection>))
-            .Returns(Substitute.For<ILogger<RabbitMqConnection>>());
+        eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, publishEvent.GetType().Name);
+        _publisherCollector.GetPublisherSettings(publishEvent).Returns(eventSettings);
+        var channel = Substitute.For<IModel>();
+        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
 
-        _publisherManager.CreateExchangeForPublishers();
-        var @event = new SimplePublishEvent
+        _publisherManager.Dispose();
+
+        _publisherCollector.Received(1).GetPublisherSettings(publishEvent);
+        _publisherCollector.Received(1).CreateRabbitMqChannel(eventSettings);
+        channel.Received(1).BasicPublish(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
+            Arg.Any<IBasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>());
+    }
+
+    [Test]
+    public void Dispose_ThereAreTwoCollectedEvents_ShouldBePublishedTwoEvents()
+    {
+        _publisherManager.Collect(new SimplePublishEvent());
+        _publisherManager.Collect(new SimplePublishEvent());
+        var eventSettings = new EventPublisherOptions();
+        var virtualHostSettings = new RabbitMqHostSettings
         {
-            Id = Guid.NewGuid(),
-            Name = "TestName"
+            VirtualHost = "TestVirtualHost",
+            ExchangeName = "TestExchangeName"
         };
+        eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, nameof(SimplePublishEvent));
+        _publisherCollector.GetPublisherSettings(Arg.Any<IPublishEvent>()).Returns(eventSettings);
+        var channel = Substitute.For<IModel>();
+        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
 
-        // Act
-        _publisherManager.Publish(@event);
+        _publisherManager.Dispose();
 
-        // Assert
-        var field = _publisherManager.GetType()
-            .GetField("_openedRabbitMqConnections", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var openedRabbitMqConnections = (Dictionary<string, IRabbitMqConnection>)field?.GetValue(_publisherManager)!;
+        _publisherCollector.Received(2).GetPublisherSettings(Arg.Any<IPublishEvent>());
+        _publisherCollector.Received(2).CreateRabbitMqChannel(eventSettings);
+        channel.Received(2).BasicPublish(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
+            Arg.Any<IBasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>());
+    }
 
-        openedRabbitMqConnections?.Count.Should().Be(1);
+    #endregion
+
+    #region Helper methods
+
+    private static readonly FieldInfo EventsToPublishFieldInfo = typeof(EventPublisherManager).GetField(
+        "_eventsToPublish", BindingFlags.NonPublic | BindingFlags.Instance);
+
+    private ICollection<IPublishEvent> GetCollectedEvents()
+    {
+        var eventsToSend =
+            EventsToPublishFieldInfo!.GetValue(_publisherManager) as ConcurrentDictionary<Guid, IPublishEvent>;
+        return eventsToSend!.Values;
     }
 
     #endregion

@@ -101,17 +101,22 @@ public class UserController : ControllerBase
     }
     
     [HttpPost]
-    public IActionResult Create([FromBody] User item)
+    public async Task<IActionResult> Create([FromBody] User item)
     {
         Items.Add(item.Id, item);
 
         var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
-        _eventPublisherManager.Publish(userCreated);
+        await _eventPublisherManager.PublishAsync(userCreated);
         
         return Ok(item);
     }
 }
 ```
+
+The `IEventPublisherManager` interface has two main methods to publish an event:
+1. The `PublishAsync` method is used to publish event immediately to the RabbitMQ.
+2. The `Collect` method is used to collect the event to the memory and then publish them while the scope/session/request is completed. It is useful if you want to collect multiple events and clear them if needed. You could use the `CleanCollectedEvents` method of the `IEventPublisherManager` to clear the collected events. By default, all collected events will be published automatically.
+
 
 ### Create a subscriber to the event
 
@@ -375,7 +380,7 @@ Before publishing an event, you can attach properties to the event's headers by 
 var userUpdated = new UserUpdated { UserId = item.Id, OldUserName = item.Name, NewUserName = newName };
 userUpdated.Headers = new();
 userUpdated.Headers.Add("TraceId", HttpContext.TraceIdentifier);
-_eventPublisherManager.Publish(userUpdated);
+await _eventPublisherManager.PublishAsync(userUpdated);
 ```
 
 ### Reading property from the subscribed event's headers
@@ -412,24 +417,33 @@ As you know, the Outbox pattern for storing all outgoing events or messages of a
 ```
 The `InboxAndOutbox` is the main section for setting of the Outbox and Inbox functionalities. The `Outbox` and `Inbox` subsections offer numerous options. For a detailed explanation on using these options, go to the [options of Inbox and Outbox sections](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections) of the EventStorage documentation.
 
-Your application is now ready to use the Outbox feature. Inject the `IOutboxEventManager` interface from anywhere in your application, and use the `Store` method to publish your `UserCreated` event.
+##### How to store an event in the Outbox pattern?
+
+Your application is now ready to use this publisher. Inject the `IOutboxEventManager` interface from anywhere in your application, and use the `Collect` or `StoreAsync` methods to publish your `UserCreated` event.
 
 ```
 public class UserController(IOutboxEventManager outboxEventManager) : ControllerBase
 {
     [HttpPost]
-    public IActionResult Create([FromBody] User item)
+    public async Task<IActionResult> Create([FromBody] User item)
     {
         Items.Add(item.Id, item);
 
         var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
-        var routingKey = "usser.created";
-        var succussfullySent = outboxEventManager.Store(userCreated, EventProviderType.MessageBroker, routingKey);
+        var succussfullySent = await outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker);
         
         return Ok(item);
     }
 }
 ```
+
+The `IOutboxEventManager` interface has two main methods to publish an event:
+1. The `StoreAsync` method is used to store the event in the database immediately. With this one, we could store single or multiple events at the same time.
+2. The `Collect` method is used to collect the event to the memory and then store it in the database while the scope/session/request is completed. It is useful if you want to collect multiple events and clear them if needed. You could use the `CleanCollectedEvents` method of the `IOutboxEventManager` to clear the collected events.  By default, all collected events will be published automatically.
+
+Both methods provide two forms of the method, one is with the event and the other are with the event and the event publisher type. When you store an event without the event publisher type, the library will automatically find all event providers that are suitable for the event type and publish the event to all of them. If you want to publish the event to a specific event provider, you need to pass the event provider type.
+
+##### How to create an event publisher for the Outbox pattern?
 
 By default, the current library has a `MessageBrokerEventPublisher` class that implements the `IMessageBrokerEventPublisher` interface, so you do not need to implement it. This class is used to publish all stored an outbox events to the RabbitMQ which configured as a MessageBroker provider.
 But if you want to create event publisher for the event type for being able to use properties of event without casting, you need to just create event publisher by using generic interface of necessary publisher. In our use case is IMessageBrokerEventPublisher<UserCreated>.
@@ -444,17 +458,15 @@ public class CreatedUserMessageBrokerEventPublisher : IMessageBrokerEventPublish
         _eventPublisher = eventPublisher;
     }
     
-    public async Task PublishAsync(UserCreated @event, string eventPath)
+    public async Task PublishAsync(UserCreated userCreated)
     {
-        _eventPublisher.Publish(@event);
-        
-        await Task.CompletedTask;
+        await _eventPublisher.PublishAsync(userCreated);
     }
 }
 ```
 
 Since we want to publish our an event to the RabbitMQ, the event publisher must implement the `IMessageBrokerEventPublisher` by passing the type of event we want to publish. And, inject the `IEventPublisherManager` interface to publish the publishing `UserCreated` event to the `RabbitMQ`.
-When we use the `Store` method of the `IOutboxEventManager` interface to publish an event, the event is first stored in the database. Then, based on our configuration (_by default, after one second_), the event will then be automatically execute the `PublishAsync` method of created the `CreatedUserMessageBrokerEventPublisher` event publisher.
+When we use the `StoreAsync` method of the `IOutboxEventManager` interface to publish an event, the event is first stored in the database. Then, based on our configuration (_by default, after one second_), the event will then be automatically execute the `PublishAsync` method of created the `CreatedUserMessageBrokerEventPublisher` event publisher.
 
 If an event fails for any reason, the server will automatically retry publishing it, with delays based on the configuration you set in the [Outbox section](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections).
 
