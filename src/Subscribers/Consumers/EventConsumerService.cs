@@ -227,7 +227,7 @@ internal class EventConsumerService : IEventConsumerService
                 await ((Task)subscriber.HandleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;
             }
             
-            OnEndingInboxEvent(subscribersInformation.EventTypeName, serviceProvider);
+            OnAllEventSubscribersAreHandled(subscribersInformation.EventTypeName, serviceProvider);
         }
 
         void StoreEventToInbox(IServiceProvider serviceProvider, SubscribersInformation subscribersInformation,
@@ -253,11 +253,11 @@ internal class EventConsumerService : IEventConsumerService
     #region Helper methods
 
     /// <summary>
-    /// Invokes the DisposingEventSubscriberScope event to be able to execute the event after the subscriber.
+    /// Invokes the <see cref="EventSubscribersHandled"/> event to be able to execute the event after the subscriber.
     /// </summary>
     /// <param name="eventName">The name of executed event.</param>
     /// <param name="serviceProvider">The IServiceProvider used to resolve dependencies from the scope.</param>
-    private void OnEndingInboxEvent(string eventName, IServiceProvider serviceProvider)
+    private void OnAllEventSubscribersAreHandled(string eventName, IServiceProvider serviceProvider)
     {
         if (EventSubscribersHandled is null)
             return;
