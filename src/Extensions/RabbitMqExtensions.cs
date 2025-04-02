@@ -33,6 +33,7 @@ public static class RabbitMqExtensions
     /// <param name="assemblies">Assemblies to find and load publisher and subscribers</param>
     /// <param name="executingSubscribedEvent">The event for subscribing to the executing subscribed event of MessageBroker</param>
     /// <param name="executingReceivedEvent">The event for subscribing to the executing received event of Inbox</param>
+    /// <param name="eventSubscribersHandled">The event to be executed after executing all subscribers of the event</param>
     public static void AddRabbitMqEventBus(this IServiceCollection services, IConfiguration configuration,
         Assembly[] assemblies,
         Action<RabbitMqOptions> defaultOptions = null,
@@ -41,32 +42,38 @@ public static class RabbitMqExtensions
         Action<EventSubscriberManagerOptions> eventSubscriberManagerOptions = null,
         Action<InboxAndOutboxOptions> eventStoreOptions = null,
         EventHandler<SubscribedMessageBrokerEventArgs> executingSubscribedEvent = null,
-        EventHandler<InboxEventArgs> executingReceivedEvent = null)
+        EventHandler<InboxEventArgs> executingReceivedEvent = null,
+        EventHandler<EventHandlerArgs> eventSubscribersHandled = null)
     {
         var eventsToSubscribe = new List<EventHandler<InboxEventArgs>>();
         if (executingReceivedEvent is not null)
             eventsToSubscribe.Add(executingReceivedEvent);
-        
+
         if (executingSubscribedEvent is not null)
         {
             EventSubscriberCollector.ExecutingSubscribedEvent += executingSubscribedEvent;
             eventsToSubscribe.Add(EventSubscriberCollector.HandleExecutingInboxEvent);
         }
-        
+
         var currentAssembly = typeof(MessageBrokerEventPublisher).Assembly;
         var assembliesToLoadEventForEventStore = assemblies.Concat([currentAssembly]).ToArray();
-        services.AddEventStore(configuration, assemblies: assembliesToLoadEventForEventStore, options: eventStoreOptions, executingReceivedEvents: eventsToSubscribe.ToArray());
+        services.AddEventStore(configuration,
+            assemblies: assembliesToLoadEventForEventStore,
+            options: eventStoreOptions,
+            disposingInboxEventHandlerScope: eventSubscribersHandled,
+            executingReceivedEvents: eventsToSubscribe.ToArray());
 
         var settings = configuration.GetSection(nameof(RabbitMqSettings)).Get<RabbitMqSettings>() ??
                        new RabbitMqSettings();
         LoadDefaultRabbitMqOptions(settings, defaultOptions);
         services.AddScoped<IEventPublisherManager, EventPublisherManager>();
-        
+
         if (!settings.DefaultSettings.IsEnabled) return;
 
         services.AddSingleton(settings.DefaultSettings);
         services.AddSingleton<IEventConsumerServiceCreator, EventConsumerServiceCreator>();
         services.AddSingleton<IRabbitMqConnectionCreator, RabbitMqConnectionCreator>();
+        EventConsumerService.EventSubscribersHandled += eventSubscribersHandled;
 
         AddOrUpdateVirtualHostSettings(settings, virtualHostSettingsOptions);
 
@@ -149,14 +156,15 @@ public static class RabbitMqExtensions
         {
             var publisherTypes = assemblies.SelectMany(a => a.GetTypes())
                 .Where(t => t is { IsClass: true, IsAbstract: false } && PublisherType.IsAssignableFrom(t)).ToArray();
-            
+
             var duplicatedTypes = publisherTypes
                 .GroupBy(t => t.Name)
                 .Where(g => g.Count() > 1)
                 .Select(g => g.Key).ToArray();
             if (duplicatedTypes.Any())
-                throw new EventBusException($"There are duplicated event types to publish: {string.Join(", ", duplicatedTypes)}. Please make sure that there is only one event type with the same name.");
-            
+                throw new EventBusException(
+                    $"There are duplicated event types to publish: {string.Join(", ", duplicatedTypes)}. Please make sure that there is only one event type with the same name.");
+
             return publisherTypes;
         }
 

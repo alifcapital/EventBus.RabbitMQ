@@ -1,4 +1,7 @@
 using EventBus.RabbitMQ.Extensions;
+using EventBus.RabbitMQ.Subscribers.Models;
+using EventStorage.Inbox.EventArgs;
+using EventStorage.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,7 +14,8 @@ builder.Services.AddRabbitMqEventBus(builder.Configuration,
     {
         options.Inbox.ConnectionString = connectionString;
         options.Outbox.ConnectionString = connectionString;
-    }
+    },
+    eventSubscribersHandled: EventSubscriberHandled
 );
 
 builder.Services.AddControllers();
@@ -33,3 +37,11 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+
+
+
+static void EventSubscriberHandled(object sender, EventHandlerArgs e)
+{
+    Console.WriteLine("All subscribers of the {0} event are handled", e.EventName);
+}
