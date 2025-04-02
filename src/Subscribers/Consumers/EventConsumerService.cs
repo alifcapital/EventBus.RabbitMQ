@@ -7,6 +7,7 @@ using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
+using EventStorage.Inbox.EventArgs;
 using EventStorage.Inbox.Managers;
 using EventStorage.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +31,11 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private readonly Dictionary<string, SubscribersInformation>
         _subscribers = new();
+
+    /// <summary>
+    /// The event to be executed after executing all subscribers of the event.
+    /// </summary>
+    public static event EventHandler<EventHandlerArgs> EventSubscribersHandled;
 
     public EventConsumerService(EventSubscriberOptions connectionOptions, IServiceProvider serviceProvider,
         bool useInbox)
@@ -88,7 +94,7 @@ internal class EventConsumerService : IEventConsumerService
 
         return channel;
     }
-    
+
     /// <summary>
     /// An event to receive all sent events
     /// </summary>
@@ -134,20 +140,23 @@ internal class EventConsumerService : IEventConsumerService
             if (_subscribers.TryGetValue(eventType,
                     out var subscribersInformation))
             {
-                _logger.LogTrace("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}", subscribersInformation.EventTypeName,
+                _logger.LogTrace("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}",
+                    subscribersInformation.EventTypeName,
                     eventArgs.BasicProperties.MessageId);
                 var eventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out Guid messageId)
                     ? messageId
                     : Guid.NewGuid();
-                
+
                 using var scope = _serviceProvider.CreateScope();
                 if (_useInbox)
                 {
-                    StoreEventToInbox(scope.ServiceProvider, subscribersInformation, eventId, eventPayload, eventHeadersAsJson);
+                    StoreEventToInbox(scope.ServiceProvider, subscribersInformation, eventId, eventPayload,
+                        eventHeadersAsJson);
                 }
                 else
                 {
-                    await ExecuteSubscribers(subscribersInformation, eventPayload, eventId, headers, scope.ServiceProvider);
+                    await ExecuteSubscribers(subscribersInformation, eventPayload, eventId, headers,
+                        scope.ServiceProvider);
                 }
 
                 MarkEventIsDelivered();
@@ -185,7 +194,10 @@ internal class EventConsumerService : IEventConsumerService
             {
                 foreach (var header in eventArgs.BasicProperties.Headers)
                 {
-                    var headerValue = header.Value is null ? null : Encoding.UTF8.GetString((byte[])header.Value);
+                    if(header.Value is null)
+                        continue;
+                    
+                    var headerValue = Encoding.UTF8.GetString((byte[])header.Value);
                     eventHeaders.Add(header.Key, headerValue);
                 }
             }
@@ -193,7 +205,8 @@ internal class EventConsumerService : IEventConsumerService
             return eventHeaders;
         }
 
-        async Task ExecuteSubscribers(SubscribersInformation subscribersInformation, string eventPayload, Guid eventId, Dictionary<string, string> headers,
+        async Task ExecuteSubscribers(SubscribersInformation subscribersInformation, string eventPayload, Guid eventId,
+            Dictionary<string, string> headers,
             IServiceProvider serviceProvider)
         {
             var jsonSerializerSetting = subscribersInformation.Settings.GetJsonSerializer();
@@ -213,9 +226,12 @@ internal class EventConsumerService : IEventConsumerService
                 var eventHandlerSubscriber = serviceProvider.GetRequiredService(subscriber.EventSubscriberType);
                 await ((Task)subscriber.HandleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;
             }
+            
+            OnAllEventSubscribersAreHandled(subscribersInformation.EventTypeName, serviceProvider);
         }
 
-        void StoreEventToInbox(IServiceProvider serviceProvider, SubscribersInformation subscribersInformation, Guid eventId, string eventPayload, string eventHeadersAsJson)
+        void StoreEventToInbox(IServiceProvider serviceProvider, SubscribersInformation subscribersInformation,
+            Guid eventId, string eventPayload, string eventHeadersAsJson)
         {
             var inboxEventManager = serviceProvider.GetService<IInboxEventManager>();
             if (inboxEventManager is null)
@@ -224,8 +240,8 @@ internal class EventConsumerService : IEventConsumerService
 
             var namingPolicyType = subscribersInformation.Settings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase;
             _ = inboxEventManager.Store(eventId, subscribersInformation.EventTypeName,
-                EventProviderType.MessageBroker, 
-                payload: eventPayload, 
+                EventProviderType.MessageBroker,
+                payload: eventPayload,
                 headers: eventHeadersAsJson,
                 eventPath: eventArgs.RoutingKey,
                 namingPolicyType: namingPolicyType);
@@ -233,4 +249,28 @@ internal class EventConsumerService : IEventConsumerService
 
         #endregion
     }
+
+    #region Helper methods
+
+    /// <summary>
+    /// Invokes the <see cref="EventSubscribersHandled"/> event to be able to execute the event after the subscriber.
+    /// </summary>
+    /// <param name="eventName">The name of executed event.</param>
+    /// <param name="serviceProvider">The IServiceProvider used to resolve dependencies from the scope.</param>
+    private void OnAllEventSubscribersAreHandled(string eventName, IServiceProvider serviceProvider)
+    {
+        if (EventSubscribersHandled is null)
+            return;
+
+        const string eventProviderType = nameof(EventProviderType.MessageBroker);
+        var eventArgs = new EventHandlerArgs
+        {
+            EventName = eventName,
+            EventProviderType = eventProviderType,
+            ServiceProvider = serviceProvider
+        };
+        EventSubscribersHandled.Invoke(this, eventArgs);
+    }
+
+    #endregion
 }
