@@ -37,10 +37,9 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+return;
 
-
-
-
+//For adding log to let you know that all subscribers are handled.
 static void EventSubscriberHandled(object sender, EventHandlerArgs e)
 {
     Console.WriteLine("All subscribers of the {0} event are handled", e.EventName);
