@@ -15,7 +15,7 @@ builder.Services.AddRabbitMqEventBus(builder.Configuration,
         options.Inbox.ConnectionString = connectionString;
         options.Outbox.ConnectionString = connectionString;
     },
-    eventSubscribersHandled: EventSubscriberHandled
+    eventSubscribersHandled: EventSubscribersAreHandled
 );
 
 builder.Services.AddControllers();
@@ -40,7 +40,7 @@ app.Run();
 return;
 
 //For adding log to let you know that all subscribers are handled.
-static void EventSubscriberHandled(object sender, EventHandlerArgs e)
+static void EventSubscribersAreHandled(object sender, EventHandlerArgs e)
 {
     Console.WriteLine("All subscribers of the {0} event are handled", e.EventName);
 }
