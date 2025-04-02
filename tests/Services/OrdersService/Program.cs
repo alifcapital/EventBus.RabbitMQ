@@ -39,7 +39,7 @@ app.MapControllers();
 app.Run();
 return;
 
-//For adding log to let you know that all subscribers are handled.
+//For adding a log to let user know that all subscribers are handled.
 static void EventSubscribersAreHandled(object sender, EventHandlerArgs e)
 {
     Console.WriteLine("All subscribers of the {0} event are handled", e.EventName);
