@@ -197,7 +197,12 @@ internal class EventConsumerService : IEventConsumerService
                     if(header.Value is null)
                         continue;
                     
-                    var headerValue = Encoding.UTF8.GetString((byte[])header.Value);
+                    string headerValue;
+                    if(header.Value is byte[] headerValueBytes)
+                        headerValue = Encoding.UTF8.GetString(headerValueBytes);
+                    else
+                        headerValue = header.Value.ToString();
+                    
                     eventHeaders.Add(header.Key, headerValue);
                 }
             }
