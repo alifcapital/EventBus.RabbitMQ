@@ -80,7 +80,7 @@ internal class EventPublisherManager(
             var publisherType = publishEvent.GetType();
             var eventSettings = eventPublisherCollector.GetPublisherSettings(publishEvent);
             using var activity = EventBusTraceInstrumentation.StartActivity(
-                $"Publishing '{eventSettings.EventTypeName}' event", ActivityKind.Producer, traceParentId);
+                $"MQ: Publishing '{eventSettings.EventTypeName}' event", ActivityKind.Producer, traceParentId);
 
             using var channel = eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
 

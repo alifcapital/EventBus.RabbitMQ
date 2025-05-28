@@ -125,7 +125,7 @@ internal class EventConsumerService : IEventConsumerService
 
             headers.TryGetValue(EventBusTraceInstrumentation.TraceParentIdKey, out var traceParentId);
 
-            using var activity = EventBusTraceInstrumentation.StartActivity($"Received '{eventType}' event",
+            using var activity = EventBusTraceInstrumentation.StartActivity($"MQ: Received '{eventType}' event",
                 ActivityKind.Consumer, traceParentId);
 
             if (EventBusTraceInstrumentation.ShouldAttachEventPayload)
