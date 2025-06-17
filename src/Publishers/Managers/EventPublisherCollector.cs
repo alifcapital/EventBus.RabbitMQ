@@ -78,14 +78,17 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         {
             try
             {
-                var exchangeId =
-                    $"{eventSettings.VirtualHostSettings.VirtualHost}-{eventSettings.VirtualHostSettings.ExchangeName}";
+                var virtualHostSettings = eventSettings.VirtualHostSettings;
+                var exchangeId = $"{virtualHostSettings.VirtualHost}-{virtualHostSettings.ExchangeName}";
                 if (createdExchangeNames.Contains(exchangeId)) continue;
 
                 using var channel = CreateRabbitMqChannel(eventSettings);
-                channel.ExchangeDeclare(eventSettings.VirtualHostSettings.ExchangeName,
-                    eventSettings.VirtualHostSettings.ExchangeType, durable: true,
-                    autoDelete: false);
+                channel.ExchangeDeclare(
+                    exchange: virtualHostSettings.ExchangeName,
+                    type: virtualHostSettings.ExchangeType, 
+                    durable: true,
+                    autoDelete: false,
+                    arguments: virtualHostSettings.ExchangeArguments);
 
                 createdExchangeNames.Add(exchangeId);
             }
