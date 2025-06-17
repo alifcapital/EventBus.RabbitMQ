@@ -61,6 +61,11 @@ public class RabbitMqHostSettings
     public Dictionary<string, object> QueueArguments { get; set; } = new();
 
     /// <summary>
+    /// Optional exchange arguments to use when declaring an exchange in RabbitMQ. These arguments can be used to set some properties of the exchange, such as "alternate exchanges", or other custom settings.
+    /// </summary>
+    public Dictionary<string, object> ExchangeArguments { get; set; } = new();
+
+    /// <summary>
     /// Retry count to connect to the RabbitMQ. Default value is "5".
     /// </summary>
     public int? RetryConnectionCount { get; set; }
@@ -122,13 +127,8 @@ public class RabbitMqHostSettings
                 property.SetValue(this, value);
         }
 
-        if (settings.QueueArguments is null) return;
-
-        foreach (var argument in settings.QueueArguments)
-        {
-            if (QueueArguments.ContainsKey(argument.Key))
-                QueueArguments[argument.Key] = argument.Value;
-        }
+        TryMergeDictionaries(settings.QueueArguments, QueueArguments);
+        TryMergeDictionaries(settings.ExchangeArguments, ExchangeArguments);
     }
 
     private object this[string propertyName]
@@ -176,6 +176,20 @@ public class RabbitMqHostSettings
         _isEventNamingPolicyInitialized = true;
 
         return _eventNamingPolicy;
+    }
+    
+    /// <summary>
+    /// Copy the contents of a source dictionary to a target dictionary if the source is not null and target does not already contain the key.
+    /// </summary>
+    private void TryMergeDictionaries<TKey, TValue>(Dictionary<TKey, TValue> source, Dictionary<TKey, TValue> target)
+    {
+        if (source is null) return;
+
+        foreach (var item in source)
+        {
+            if (!target.ContainsKey(item.Key))
+                target[item.Key] = item.Value;
+        }
     }
 
     #endregion

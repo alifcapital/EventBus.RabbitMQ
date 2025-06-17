@@ -177,6 +177,9 @@ First you need to add a new section called `RabbitMQSettings` to your configurat
       "PropertyNamingPolicy": "CamelCase",
       "QueueArguments": {
         "x-queue-type": "quorum"
+      },
+      "ExchangeArguments": {
+        "alternate-exchange": "your-alternate-exchange-name"
       }
     },
     "Publishers": {
@@ -210,16 +213,19 @@ First you need to add a new section called `RabbitMQSettings` to your configurat
         "ExchangeName": "payments_exchange",
         "VirtualHost": "payments",
         "EventNamingPolicy": "KebabCaseUpper",
+        "ExchangeArguments": {
+          "alternate-exchange": "your-alternate-exchange-name"
+        }
       }
     }
   }
 ```
 
 A section may have the following subsections: <br/>
-`DefaultSettings` - to set the default configuration/settings for connecting to the RabbitMQ and publishing and receiving messages. If you don't pass them, it will use default settings of RabbitMQ; The default settings has optional parameter named `QueueArguments` to pass the arguments to the queue. Another thing is that, by passing false to the `IsEnabled` option, we are able to just disable using RabbitMQ.<br/>
+`DefaultSettings` - to set the default configuration/settings for connecting to the RabbitMQ and publishing and receiving messages. If you don't pass them, it will use default settings of RabbitMQ. The default settings has optional parameter named `QueueArguments` to pass the arguments to the queue and `ExchangeArguments` to pass the arguments to the exchange. Another thing is that, by passing false to the `IsEnabled` option, we are able to just disable using RabbitMQ.<br/>
 `Publishers` - set custom settings for the publishers if needed. If you don't pass them, it will use the virtual host settings based on the `VirtualHostKey` which configured in the `VirtualHostSettings` section; <br/>
 `Subscribers` - set custom settings for the subscribers if needed. If you don't pass them, it will use the virtual host settings based on the `VirtualHostKey` which configured in the `VirtualHostSettings` section; <br/>
-`VirtualHostSettings` - adding virtual host configuration by given a key to use them from the publishers and subscribers. If we just add a new virtual host and not set all parameters, the not assigned properties automatically get/inherit a value from the default settings. If we don't want to use the default settings, we need to just set empty to the property to avoid auto-set. Then we can use the registered a virtual host from any subscribers or publishers by passing a `VirtualHostKey` value. <br/>
+`VirtualHostSettings` - adding virtual host configuration by given a key to use them from the publishers and subscribers. If we just add a new virtual host and not set all parameters, the not assigned properties automatically get/inherit a value from the default settings. If we don't want to use the default settings, we need to just set empty to the property to avoid auto-set. Then we can use the registered a virtual host from any subscribers or publishers by passing a `VirtualHostKey` value. Note: In the each `VirtualHostSettings` item, we are able to overwrite each option of the `DefaultSettings` except the `IsEnabled` and `UseInbox` options if needed.<br/>
 
 ##### Can we use the TLS protocol while publishing events or subscribing to the events?
 Yes, we can. For that we need to just enable the using the TLS protocol by adding the options below to the `DefaultSettings` if we want to use that in all events, or add them to the specific virtual host to use from the publishing or subscribing event:

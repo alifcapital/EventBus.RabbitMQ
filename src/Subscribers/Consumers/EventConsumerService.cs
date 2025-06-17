@@ -74,13 +74,22 @@ internal class EventConsumerService : IEventConsumerService
 
         var channel = _connection.CreateChannel();
 
-        channel.ExchangeDeclare(exchange: _connectionOptions.VirtualHostSettings.ExchangeName,
-            type: _connectionOptions.VirtualHostSettings.ExchangeType,
-            durable: true, autoDelete: false);
-        channel.QueueDeclare(_connectionOptions.QueueName, durable: true, exclusive: false, autoDelete: false,
-            _connectionOptions.VirtualHostSettings.QueueArguments);
+        var virtualHostSettings = _connectionOptions.VirtualHostSettings;
+        channel.ExchangeDeclare(
+            exchange: virtualHostSettings.ExchangeName,
+            type: virtualHostSettings.ExchangeType,
+            durable: true,
+            autoDelete: false,
+            arguments: virtualHostSettings.ExchangeArguments);
+
+        channel.QueueDeclare(
+            queue: _connectionOptions.QueueName,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            arguments: virtualHostSettings.QueueArguments);
         foreach (var eventSettings in _subscribers.Values.Select(s => s.Settings))
-            channel.QueueBind(_connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.ExchangeName,
+            channel.QueueBind(_connectionOptions.QueueName, virtualHostSettings.ExchangeName,
                 eventSettings.RoutingKey);
 
         channel.CallbackException += (_, ea) =>
@@ -194,15 +203,15 @@ internal class EventConsumerService : IEventConsumerService
             {
                 foreach (var header in eventArgs.BasicProperties.Headers)
                 {
-                    if(header.Value is null)
+                    if (header.Value is null)
                         continue;
-                    
+
                     string headerValue;
-                    if(header.Value is byte[] headerValueBytes)
+                    if (header.Value is byte[] headerValueBytes)
                         headerValue = Encoding.UTF8.GetString(headerValueBytes);
                     else
                         headerValue = header.Value.ToString();
-                    
+
                     eventHeaders.Add(header.Key, headerValue);
                 }
             }
@@ -231,7 +240,7 @@ internal class EventConsumerService : IEventConsumerService
                 var eventHandlerSubscriber = serviceProvider.GetRequiredService(subscriber.EventSubscriberType);
                 await ((Task)subscriber.HandleMethod!.Invoke(eventHandlerSubscriber, [receivedEvent]))!;
             }
-            
+
             OnAllEventSubscribersAreHandled(subscribersInformation.EventTypeName, serviceProvider);
         }
 
