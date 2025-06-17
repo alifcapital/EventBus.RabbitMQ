@@ -127,8 +127,8 @@ public class RabbitMqHostSettings
                 property.SetValue(this, value);
         }
 
-        CopyDictionaryIfNotNull(settings.QueueArguments, QueueArguments);
-        CopyDictionaryIfNotNull(settings.ExchangeArguments, ExchangeArguments);
+        TryMergeDictionaries(settings.QueueArguments, QueueArguments);
+        TryMergeDictionaries(settings.ExchangeArguments, ExchangeArguments);
     }
 
     private object this[string propertyName]
@@ -179,9 +179,9 @@ public class RabbitMqHostSettings
     }
     
     /// <summary>
-    /// Copy the contents of a source dictionary to a target dictionary if the source is not null.
+    /// Copy the contents of a source dictionary to a target dictionary if the source is not null and target does not already contain the key.
     /// </summary>
-    private void CopyDictionaryIfNotNull<TKey, TValue>(Dictionary<TKey, TValue> source, Dictionary<TKey, TValue> target)
+    private void TryMergeDictionaries<TKey, TValue>(Dictionary<TKey, TValue> source, Dictionary<TKey, TValue> target)
     {
         if (source is null) return;
 
