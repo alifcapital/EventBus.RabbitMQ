@@ -4,7 +4,6 @@ using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Publishers.Managers;
 using EventBus.RabbitMQ.Publishers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -46,8 +45,8 @@ public class EventPublisherCollectorTests : BaseTestEntity
 
         // Assert
         var publishers = GetPublishersInfo();
-        publishers.Should().ContainKey(nameof(SimplePublishEvent));
-        publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKey");
+        Assert.That(publishers.ContainsKey(nameof(SimplePublishEvent)), Is.True);
+        Assert.That(publishers[nameof(SimplePublishEvent)].RoutingKey, Is.EqualTo("TestRoutingKey"));
     }
 
     [Test]
@@ -62,8 +61,8 @@ public class EventPublisherCollectorTests : BaseTestEntity
 
         // Assert
         var publishers = GetPublishersInfo();
-        publishers.Should().ContainKey(nameof(SimplePublishEvent));
-        publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKeyUpdated");
+        Assert.That(publishers.ContainsKey(nameof(SimplePublishEvent)), Is.True);
+        Assert.That(publishers[nameof(SimplePublishEvent)].RoutingKey, Is.EqualTo("TestRoutingKeyUpdated"));
     }
 
     [Test]
@@ -81,8 +80,8 @@ public class EventPublisherCollectorTests : BaseTestEntity
 
         // Assert
         var publishers = GetPublishersInfo();
-        publishers.Should().ContainKey(nameof(SimplePublishEvent));
-        publishers!.First().Value.RoutingKey.Should().Be("TestRoutingKey");
+        Assert.That(publishers.ContainsKey(nameof(SimplePublishEvent)), Is.True);
+        Assert.That(publishers[nameof(SimplePublishEvent)].RoutingKey, Is.EqualTo("TestRoutingKey"));
     }
 
     #endregion
@@ -112,8 +111,8 @@ public class EventPublisherCollectorTests : BaseTestEntity
 
         // Assert
         var publishers = GetPublishersInfo();
-        publishers.Should().ContainKey(nameof(SimplePublishEvent));
-        publishers!.First().Value.VirtualHostSettings.VirtualHost.Should().Be("TestVirtualHost");
+        Assert.That(publishers.ContainsKey(nameof(SimplePublishEvent)), Is.True);
+        Assert.That(publishers[nameof(SimplePublishEvent)].VirtualHostSettings.VirtualHost, Is.EqualTo("TestVirtualHost"));
     }
 
     #endregion
@@ -147,12 +146,12 @@ public class EventPublisherCollectorTests : BaseTestEntity
         // Assert
         var field = _publisherCollector.GetType()
             .GetField("_openedRabbitMqConnections", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
+        Assert.That(field, Is.Not.Null);
         var openedRabbitMqConnections = (Dictionary<string, IRabbitMqConnection>)field?.GetValue(_publisherCollector)!;
+        Assert.That(openedRabbitMqConnections?.Count, Is.EqualTo(1));
         _rabbitMqConnectionCreator.Received(1).CreateConnection(Arg.Any<EventPublisherOptions>(), _serviceProvider);
         rabbitMqConnection.Received(1).CreateChannel();
 
-        openedRabbitMqConnections?.Count.Should().Be(1);
     }
 
     #endregion

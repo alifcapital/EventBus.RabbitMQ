@@ -3,7 +3,6 @@ using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Extensions;
 using EventBus.RabbitMQ.Publishers.Managers;
 using EventBus.RabbitMQ.Tests.Domain;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -47,7 +46,7 @@ public class RabbitMqExtensionsTests : BaseTestEntity
         );
 
         // Assert
-        result.Should().BeEquivalentTo(expectedTypes);
+        Assert.That(result, Is.EquivalentTo(expectedTypes));
     }
 
     #endregion
@@ -71,7 +70,7 @@ public class RabbitMqExtensionsTests : BaseTestEntity
             ]
         );
 
-        result.Should().BeEquivalentTo(expectedTypes);
+        Assert.That(result, Is.EquivalentTo(expectedTypes));
     }
 
     #endregion

@@ -5,7 +5,6 @@ using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
-using FluentAssertions;
 using NSubstitute;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Subscribers;
@@ -38,8 +37,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
 
         var subscribers = GetSubscribers();
-        subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.Settings.QueueName.Should().Be(queueName);
+        Assert.That(subscribers.ContainsKey(nameof(SimpleSubscribeEvent)), Is.True);
+        Assert.That(subscribers[nameof(SimpleSubscribeEvent)].Settings.QueueName, Is.EqualTo(queueName));
     }
  
     [Test]
@@ -74,8 +73,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         });
 
         var subscribers = GetSubscribers();
-        subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.Settings.QueueName.Should().Be(newQueueName);
+        Assert.That(subscribers.ContainsKey(nameof(SimpleSubscribeEvent)), Is.True);
+        Assert.That(subscribers[nameof(SimpleSubscribeEvent)].Settings.QueueName, Is.EqualTo(newQueueName));
     }
 
     [Test]
@@ -90,8 +89,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         _subscriberCollector.AddSubscriber(typeof(SimpleSubscribeEvent), typeof(SimpleEventSubscriberHandler), options);
 
         var subscribers = GetSubscribers();
-        subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.Settings.QueueName.Should().Be(queueName);
+        Assert.That(subscribers.ContainsKey(nameof(SimpleSubscribeEvent)), Is.True);
+        Assert.That(subscribers[nameof(SimpleSubscribeEvent)].Settings.QueueName, Is.EqualTo(queueName));
     }
  
     [Test]
@@ -131,8 +130,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
             });
 
         var subscribers = GetSubscribers();
-        subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.Settings.QueueName.Should().Be(newQueueName);
+        Assert.That(subscribers.ContainsKey(nameof(SimpleSubscribeEvent)), Is.True);
+        Assert.That(subscribers[nameof(SimpleSubscribeEvent)].Settings.QueueName, Is.EqualTo(newQueueName));
     }
 
     [Test]
@@ -142,8 +141,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
             new EventSubscriberOptions());
         
         var subscribers = GetSubscribers();
-        subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.Settings.QueueName.Should().BeNull();
+        Assert.That(subscribers.ContainsKey(nameof(SimpleSubscribeEvent)), Is.True);
+        Assert.That(subscribers[nameof(SimpleSubscribeEvent)].Settings.QueueName, Is.Null);
     }
 
     #endregion
@@ -170,8 +169,9 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         _subscriberCollector.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
 
         var subscribers = GetSubscribers();
-        subscribers.Should().ContainKey(nameof(SimpleSubscribeEvent));
-        subscribers!.First().Value.Settings.VirtualHostSettings.VirtualHost.Should().Be("TestVirtualHost");
+        Assert.That(subscribers.ContainsKey(nameof(SimpleSubscribeEvent)), Is.True);
+        Assert.That(subscribers[nameof(SimpleSubscribeEvent)].Settings.VirtualHostSettings.VirtualHost,
+            Is.EqualTo("TestVirtualHost"));
     }
 
     #endregion
@@ -216,7 +216,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
 
         var eventConsumers = GetEventConsumerServices();
 
-        eventConsumers.Should().ContainKey("TestVirtualHost-TestQueue");
+        Assert.That(eventConsumers.ContainsKey("TestVirtualHost-TestQueue"), Is.True);
         eventConsumer.Received().AddSubscriber(
             Arg.Is<SubscribersInformation>
             (subscribersInfo =>
@@ -248,7 +248,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
 
     private Dictionary<string, IEventConsumerService> GetEventConsumerServices()
     {
-        _eventConsumersField.Should().NotBeNull();
+        Assert.That(_eventConsumersField, Is.Not.Null);
         var eventConsumers =
             (Dictionary<string, IEventConsumerService>)_eventConsumersField?.GetValue(_subscriberCollector)!;
         return eventConsumers;

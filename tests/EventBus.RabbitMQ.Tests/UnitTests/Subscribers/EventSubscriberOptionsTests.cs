@@ -1,7 +1,6 @@
 ﻿using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventStorage.Models;
-using FluentAssertions;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Subscribers;
 
@@ -23,9 +22,8 @@ public class EventSubscriberOptionsTests : BaseTestEntity
             Assert.Throws<ArgumentNullException>(() =>
                 eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName));
 
-        exception!.Message.Should()
-            .Be(
-                $"The {nameof(settings.VirtualHost)} is required, but it is currently null or empty for the {settings.HostName} host.");
+        Assert.That(exception!.Message, Is.EqualTo(
+            $"The {nameof(settings.VirtualHost)} is required, but it is currently null or empty for the {settings.HostName} host."));
     }
 
     [Test]
@@ -42,9 +40,8 @@ public class EventSubscriberOptionsTests : BaseTestEntity
             Assert.Throws<ArgumentNullException>(() =>
                 eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName));
 
-        exception!.Message.Should()
-            .Be(
-                $"The {nameof(settings.ExchangeName)} is required, but it is currently null or empty for the {settings.VirtualHost} virtual host.");
+        Assert.That(exception!.Message, Is.EqualTo(
+            $"The {nameof(settings.ExchangeName)} is required, but it is currently null or empty for the {settings.VirtualHost} virtual host."));
     }
 
     [Test]
@@ -77,7 +74,7 @@ public class EventSubscriberOptionsTests : BaseTestEntity
 
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
-        eventSettings.EventTypeName.Should().Be(eventTypeName);
+        Assert.That(eventSettings.EventTypeName, Is.EqualTo(eventTypeName));
     }
 
     [Test]
@@ -96,7 +93,7 @@ public class EventSubscriberOptionsTests : BaseTestEntity
 
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
-        eventSettings.EventTypeName.Should().Be(eventSettings.EventTypeName);
+        Assert.That(eventSettings.EventTypeName, Is.EqualTo("User-Created"));
     }
 
     [Test]
@@ -113,7 +110,7 @@ public class EventSubscriberOptionsTests : BaseTestEntity
 
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
-        eventSettings.EventTypeName.Should().Be("user_created");
+        Assert.That(eventSettings.EventTypeName, Is.EqualTo("user_created"));
     }
 
     #endregion
@@ -137,7 +134,7 @@ public class EventSubscriberOptionsTests : BaseTestEntity
 
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
-        eventSettings.RoutingKey.Should().Be(eventSettings.RoutingKey);
+        Assert.That(eventSettings.RoutingKey, Is.EqualTo("test-event-routing-key"));
     }
 
     [Test]
@@ -154,7 +151,7 @@ public class EventSubscriberOptionsTests : BaseTestEntity
 
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
-        eventSettings.RoutingKey.Should().Be(settings.RoutingKey);
+        Assert.That(eventSettings.RoutingKey, Is.EqualTo(settings.RoutingKey));
     }
 
     [Test]
@@ -171,7 +168,7 @@ public class EventSubscriberOptionsTests : BaseTestEntity
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
         var calculatedRoutingKey = $"{settings.ExchangeName}.{eventTypeName}";
-        eventSettings.RoutingKey.Should().Be(calculatedRoutingKey);
+        Assert.That(eventSettings.RoutingKey, Is.EqualTo(calculatedRoutingKey));
     }
 
     [Test]
@@ -189,11 +186,11 @@ public class EventSubscriberOptionsTests : BaseTestEntity
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
         var calculatedRoutingKey = $"{settings.ExchangeName}.user_created";
-        eventSettings.RoutingKey.Should().Be(calculatedRoutingKey);
+        Assert.That(eventSettings.RoutingKey, Is.EqualTo(calculatedRoutingKey));
     }
 
     #endregion
-    
+
     #region QueueName
 
     [Test]
@@ -213,7 +210,7 @@ public class EventSubscriberOptionsTests : BaseTestEntity
 
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
-        eventSettings.QueueName.Should().Be(eventSettings.QueueName);
+        Assert.That(eventSettings.QueueName, Is.EqualTo("test-event-queue-name"));
     }
 
     [Test]
@@ -230,7 +227,7 @@ public class EventSubscriberOptionsTests : BaseTestEntity
 
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
 
-        eventSettings.QueueName.Should().Be(settings.QueueName);
+        Assert.That(eventSettings.QueueName, Is.EqualTo(settings.QueueName));
     }
 
     [Test]
@@ -243,10 +240,10 @@ public class EventSubscriberOptionsTests : BaseTestEntity
             ExchangeName = "test-exchange"
         };
         var eventSettings = new EventSubscriberOptions();
-    
+
         eventSettings.SetVirtualHostAndUnassignedSettings(settings, eventTypeName);
-    
-        eventSettings.QueueName.Should().Be(settings.ExchangeName);
+
+        Assert.That(eventSettings.QueueName, Is.EqualTo(settings.ExchangeName));
     }
 
     #endregion
