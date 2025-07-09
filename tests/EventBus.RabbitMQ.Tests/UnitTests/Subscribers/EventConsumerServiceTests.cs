@@ -86,10 +86,10 @@ public class EventConsumerServiceTests : BaseTestEntity
         var field = _consumerService.GetType()
             .GetField("_consumerChannel", BindingFlags.NonPublic | BindingFlags.Instance);
         
-        Assert.That(field, Is.Not.Null, "_consumerChannel field should exist");
+        Assert.That(field, Is.Not.Null);
         var consumerChannel = field?.GetValue(_consumerService) as IModel;
         _rabbitMqConnectionCreator.Received(1).CreateConnection(_settings, _serviceProvider);
-        Assert.That(consumerChannel, Is.Not.Null, "consumerChannel should be initialized");
+        Assert.That(consumerChannel, Is.Not.Null);
     }
 
     #endregion
@@ -105,7 +105,7 @@ public class EventConsumerServiceTests : BaseTestEntity
         var field = _consumerService.GetType()
             .GetField(subscribersFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
 
-        Assert.That(field, Is.Not.Null, "_subscribers field should exist");
+        Assert.That(field, Is.Not.Null);
 
         var subscribers = (Dictionary<string, SubscribersInformation>)field?.GetValue(_consumerService)!;
         return subscribers;
