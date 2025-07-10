@@ -5,7 +5,6 @@ using EventBus.RabbitMQ.Subscribers.Consumers;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using RabbitMQ.Client;
@@ -86,31 +85,32 @@ public class EventConsumerServiceTests : BaseTestEntity
 
         var field = _consumerService.GetType()
             .GetField("_consumerChannel", BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        var consumerChannel = (IModel)field?.GetValue(_consumerService)!;
+        
+        Assert.That(field, Is.Not.Null);
+        var consumerChannel = field?.GetValue(_consumerService) as IModel;
         _rabbitMqConnectionCreator.Received(1).CreateConnection(_settings, _serviceProvider);
-
-        consumerChannel.Should().NotBeNull();
+        Assert.That(consumerChannel, Is.Not.Null);
     }
 
     #endregion
     
     #region Helper methods
-    
+
     /// <summary>
     /// Get the subscribers information from the EventConsumerService
     /// </summary>
-    /// <returns></returns>
     private Dictionary<string, SubscribersInformation> GetAllSubscribersInformation()
     {
         const string subscribersFieldName = "_subscribers";
         var field = _consumerService.GetType()
             .GetField(subscribersFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
-        field.Should().NotBeNull();
-        
+
+        Assert.That(field, Is.Not.Null);
+
         var subscribers = (Dictionary<string, SubscribersInformation>)field?.GetValue(_consumerService)!;
         return subscribers;
     }
-    
+
     #endregion
+    
 }

@@ -1,7 +1,5 @@
 using EventBus.RabbitMQ.Extensions;
-using EventBus.RabbitMQ.Subscribers.Models;
 using EventStorage.Inbox.EventArgs;
-using EventStorage.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
