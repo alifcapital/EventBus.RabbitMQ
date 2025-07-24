@@ -8,7 +8,6 @@
         <Description>It's easier to implement EventBus with RabbitMQ to publish and receive events. It is designed to work with multiple virtual hosts.</Description>
         <PackageProjectUrl>https://github.com/alifcapital/EventBus.RabbitMQ</PackageProjectUrl>
         <RepositoryUrl>https://github.com/alifcapital/EventBus.RabbitMQ</RepositoryUrl>
-        <RepositoryType>private</RepositoryType>
         <PackageTags>EventBus.RabbitMQ, RabbitMQ, EventBus</PackageTags>
         <Company>Alif Capital</Company>
         <NeutralLanguage>en</NeutralLanguage>
