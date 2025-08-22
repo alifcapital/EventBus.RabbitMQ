@@ -151,7 +151,6 @@ public class EventPublisherCollectorTests : BaseTestEntity
         Assert.That(openedRabbitMqConnections?.Count, Is.EqualTo(1));
         _rabbitMqConnectionCreator.Received(1).CreateConnection(Arg.Any<EventPublisherOptions>(), _serviceProvider);
         rabbitMqConnection.Received(1).CreateChannel();
-
     }
 
     #endregion

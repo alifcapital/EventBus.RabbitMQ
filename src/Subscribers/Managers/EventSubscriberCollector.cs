@@ -105,7 +105,16 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
         }
 
         foreach (var consumer in _eventConsumers)
-            consumer.Value.StartAndSubscribeReceiver();
+        {
+            try
+            {
+                consumer.Value.StartAndSubscribeReceiver();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+        }
     }
 
     /// <summary>

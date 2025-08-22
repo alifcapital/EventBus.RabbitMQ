@@ -77,7 +77,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
             $"The RabbitMQ connection is opened for the {connectionDetail} on the '{_connectionOptions.HostName}' host's '{_connectionOptions.VirtualHost}' virtual host.";
     }
 
-    readonly object _lockOpenConnection = new();
+    readonly Lock _lockOpenConnection = new();
 
     public bool TryConnect()
     {
