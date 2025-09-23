@@ -122,6 +122,7 @@ internal class EventPublisherManager(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error while opening the RabbitMQ connection or publishing the event.");
+            throw;
         }
     }
 
