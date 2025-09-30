@@ -29,8 +29,7 @@ internal class EventConsumerService : IEventConsumerService
     /// <summary>
     /// Dictionary collection to store all events and event handlers information
     /// </summary>
-    private readonly Dictionary<string, SubscribersInformation>
-        _subscribers = new();
+    private readonly Dictionary<string, SubscribersInformation> _subscribers = [];
 
     /// <summary>
     /// The event to be executed after executing all subscribers of the event.
@@ -43,8 +42,8 @@ internal class EventConsumerService : IEventConsumerService
         _connectionOptions = connectionOptions;
         _serviceProvider = serviceProvider;
         _logger = _serviceProvider.GetRequiredService<ILogger<EventConsumerService>>();
-        var rabbitMqConnectionCreator = serviceProvider.GetRequiredService<IRabbitMqConnectionCreator>();
-        _connection = rabbitMqConnectionCreator.CreateConnection(connectionOptions, serviceProvider);
+        var rabbitMqConnectionCreator = serviceProvider.GetRequiredService<IRabbitMqConnectionManager>();
+        _connection = rabbitMqConnectionCreator.GetOrCreateConnection(connectionOptions.VirtualHostSettings);
         _useInbox = useInbox;
     }
 
@@ -64,6 +63,8 @@ internal class EventConsumerService : IEventConsumerService
         _consumerChannel.BasicConsume(queue: _connectionOptions.QueueName, autoAck: false, consumer: consumer);
     }
 
+    #region CreateConsumerChannel
+    
     /// <summary>
     /// To create channel for consumer
     /// </summary>
@@ -104,6 +105,10 @@ internal class EventConsumerService : IEventConsumerService
         return channel;
     }
 
+    #endregion
+
+    #region Consumer received event
+    
     /// <summary>
     /// An event to receive all sent events
     /// </summary>
@@ -263,6 +268,8 @@ internal class EventConsumerService : IEventConsumerService
 
         #endregion
     }
+    
+    #endregion
 
     #region Helper methods
 

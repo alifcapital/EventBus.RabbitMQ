@@ -16,7 +16,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     private IServiceProvider _serviceProvider;
     private EventConsumerService _consumerService;
     private ILogger<EventConsumerService> _logger;
-    private IRabbitMqConnectionCreator _rabbitMqConnectionCreator;
+    private IRabbitMqConnectionManager _rabbitMqConnectionManager;
     private EventSubscriberOptions _settings;
 
     #region SetUp
@@ -36,8 +36,8 @@ public class EventConsumerServiceTests : BaseTestEntity
         _logger = Substitute.For<ILogger<EventConsumerService>>();
         _serviceProvider.GetService(typeof(ILogger<EventConsumerService>)).Returns(_logger);
 
-        _rabbitMqConnectionCreator = Substitute.For<IRabbitMqConnectionCreator>();
-        _serviceProvider.GetService(typeof(IRabbitMqConnectionCreator)).Returns(_rabbitMqConnectionCreator);
+        _rabbitMqConnectionManager = Substitute.For<IRabbitMqConnectionManager>();
+        _serviceProvider.GetService(typeof(IRabbitMqConnectionManager)).Returns(_rabbitMqConnectionManager);
 
         _consumerService = new EventConsumerService(_settings, _serviceProvider, false);
     }
@@ -88,7 +88,7 @@ public class EventConsumerServiceTests : BaseTestEntity
         
         Assert.That(field, Is.Not.Null);
         var consumerChannel = field?.GetValue(_consumerService) as IModel;
-        _rabbitMqConnectionCreator.Received(1).CreateConnection(_settings, _serviceProvider);
+        _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(_settings.VirtualHostSettings);
         Assert.That(consumerChannel, Is.Not.Null);
     }
 

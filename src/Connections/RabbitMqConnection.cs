@@ -1,7 +1,6 @@
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using EventBus.RabbitMQ.Configurations;
-using EventBus.RabbitMQ.Subscribers.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Polly;
@@ -23,9 +22,9 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     private IConnection _connection;
     private static string _connectTitle;
 
-    public RabbitMqConnection(BaseEventOptions eventSettings, IServiceProvider serviceProvider)
+    public RabbitMqConnection(RabbitMqHostSettings virtualHostSettings, IServiceProvider serviceProvider)
     {
-        _connectionOptions = eventSettings.VirtualHostSettings;
+        _connectionOptions = virtualHostSettings;
         var connectionFactory = new ConnectionFactory
         {
             HostName = _connectionOptions.HostName,
@@ -67,14 +66,8 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         _connectionFactory = connectionFactory;
         RetryConnectionCount = (int)_connectionOptions.RetryConnectionCount!;
 
-        string connectionDetail;
-        if (eventSettings is EventSubscriberOptions subscriberOptions)
-            connectionDetail = $"'{subscriberOptions.QueueName}' queue of subscribers/receivers";
-        else
-            connectionDetail = $"'{_connectionOptions.ExchangeName}' exchange of publishers";
-
         _connectTitle =
-            $"The RabbitMQ connection is opened for the {connectionDetail} on the '{_connectionOptions.HostName}' host's '{_connectionOptions.VirtualHost}' virtual host.";
+            $"The RabbitMQ connection is opened for an event subscriber or publisher for the '{_connectionOptions.HostName}':{_connectionOptions.HostPort} host's '{_connectionOptions.VirtualHost}' virtual host.";
     }
 
     readonly Lock _lockOpenConnection = new();

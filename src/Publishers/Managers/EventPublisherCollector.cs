@@ -17,10 +17,9 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         serviceProvider.GetRequiredService<ILogger<EventPublisherCollector>>();
 
     private readonly Dictionary<string, EventPublisherOptions> _publishersConnectionInfo = new();
-    private readonly Dictionary<string, IRabbitMqConnection> _openedRabbitMqConnections = new();
 
-    private readonly IRabbitMqConnectionCreator _rabbitMqConnectionCreator =
-        serviceProvider.GetRequiredService<IRabbitMqConnectionCreator>();
+    private readonly IRabbitMqConnectionManager _rabbitMqConnectionManager =
+        serviceProvider.GetRequiredService<IRabbitMqConnectionManager>();
 
     #region AddPublisher
 
@@ -79,7 +78,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
             try
             {
                 var virtualHostSettings = eventSettings.VirtualHostSettings;
-                var exchangeId = $"{virtualHostSettings.VirtualHost}-{virtualHostSettings.ExchangeName}";
+                var exchangeId = $"{virtualHostSettings.VirtualHost}-{virtualHostSettings.HostPort}-{virtualHostSettings.ExchangeName}";
                 if (createdExchangeNames.Contains(exchangeId)) continue;
 
                 using var channel = CreateRabbitMqChannel(eventSettings);
@@ -97,8 +96,6 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 _logger.LogError(ex, "Error while creating an exchange for {publisherName} publisher.", eventName);
             }
         }
-
-        createdExchangeNames.Clear();
     }
 
     #endregion
@@ -122,29 +119,8 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
 
     public IModel CreateRabbitMqChannel(EventPublisherOptions settings)
     {
-        var connection = CreateRabbitMqConnection(settings);
+        var connection = _rabbitMqConnectionManager.GetOrCreateConnection(settings.VirtualHostSettings);
         return connection.CreateChannel();
-    }
-
-    #endregion
-
-    #region Helper methods
-
-    /// <summary>
-    /// Creates RabbitMQ connection for the unique connection ID (VirtualHost+ExchangeName) and cache that.
-    /// </summary>
-    /// <param name="settings">Publisher setting to open connection</param>
-    /// <returns>Returns create RabbitMQ connection</returns>
-    private IRabbitMqConnection CreateRabbitMqConnection(EventPublisherOptions settings)
-    {
-        var connectionId = $"{settings.VirtualHostSettings.VirtualHost}-{settings.VirtualHostSettings.ExchangeName}";
-        if (!_openedRabbitMqConnections.TryGetValue(connectionId, out var connection))
-        {
-            connection = _rabbitMqConnectionCreator.CreateConnection(settings, serviceProvider);
-            _openedRabbitMqConnections.Add(connectionId, connection);
-        }
-
-        return connection;
     }
 
     #endregion
