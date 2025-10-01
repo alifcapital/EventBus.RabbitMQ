@@ -41,11 +41,6 @@ internal static class RabbitMqOptionsConstant
     const string ExchangeType = "topic";
 
     /// <summary>
-    /// The name of the queue to use in RabbitMQ.
-    /// </summary>
-    public const string QueueName = "DefaultQueue";
-
-    /// <summary>
     /// Retry count to connect to the RabbitMQ. Default value is "3".
     /// </summary>
     const int RetryConnectionCount = 3;
@@ -79,7 +74,6 @@ internal static class RabbitMqOptionsConstant
             Password = Password,
             ExchangeName = ExchangeName,
             ExchangeType = ExchangeType,
-            QueueName = QueueName,
             RetryConnectionCount = RetryConnectionCount,
             PropertyNamingPolicy = NamingPolicyType.PascalCase,
             EventNamingPolicy = NamingPolicyType.PascalCase,
