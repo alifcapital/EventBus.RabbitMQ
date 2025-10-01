@@ -81,7 +81,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     [Test]
     public void StartAndSubscribeReceiver_StartingConsumerWithDefaultSetting_ShouldCreateConsumer()
     {
-        _consumerService.StartAndSubscribeReceiver();
+        _consumerService.CreateChannelAndSubscribeReceiver();
 
         var field = _consumerService.GetType()
             .GetField("_consumerChannel", BindingFlags.NonPublic | BindingFlags.Instance);

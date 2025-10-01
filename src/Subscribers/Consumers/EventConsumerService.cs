@@ -52,21 +52,23 @@ internal class EventConsumerService : IEventConsumerService
         _subscribers.Add(eventInfo.Settings.EventTypeName!, eventInfo);
     }
 
+    #region Create channel and subscribe receiver
+    
+    private readonly Lock _lockReOpenChannel = new();
+    
     /// <summary>
     /// Starts receiving events by creating a consumer
     /// </summary>
-    public void StartAndSubscribeReceiver()
+    public void CreateChannelAndSubscribeReceiver()
     {
         _consumerChannel = CreateConsumerChannel();
         var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
-        consumer.Received += Consumer_Received;
+        consumer.Received += Consumer_ReceivingEvent;
         _consumerChannel.BasicConsume(queue: _connectionOptions.QueueName, autoAck: false, consumer: consumer);
     }
-
-    #region CreateConsumerChannel
     
     /// <summary>
-    /// To create channel for consumer
+    /// To create channel for consumer. If the channel is disconnected, it will try to create a new one.
     /// </summary>
     /// <returns>Returns create channel</returns>
     private IModel CreateConsumerChannel()
@@ -93,26 +95,35 @@ internal class EventConsumerService : IEventConsumerService
             channel.QueueBind(_connectionOptions.QueueName, virtualHostSettings.ExchangeName,
                 eventSettings.RoutingKey);
 
-        channel.CallbackException += (_, ea) =>
-        {
-            _logger.LogWarning(ea.Exception, "Recreating RabbitMQ consumer channel");
-
-            _consumerChannel.Dispose();
-            _consumerChannel = CreateConsumerChannel();
-            StartAndSubscribeReceiver();
-        };
+        channel.CallbackException += OnCallbackException;
 
         return channel;
     }
+    
+    /// <summary>
+    /// The event handler for recreating the consumer channel when an exception is thrown.
+    /// </summary>
+    private void OnCallbackException(object sender, CallbackExceptionEventArgs e)
+    {
+        lock (_lockReOpenChannel)
+        {
+            _logger.LogWarning(e.Exception, "Recreating RabbitMQ consumer channel after exception");
+            
+            _consumerChannel.CallbackException -= OnCallbackException;
+            _consumerChannel.Dispose();
+            
+            CreateChannelAndSubscribeReceiver();
+        }
+    } 
 
     #endregion
 
-    #region Consumer received event
+    #region Receiving and handling events
     
     /// <summary>
     /// An event to receive all sent events
     /// </summary>
-    private async Task Consumer_Received(object sender, BasicDeliverEventArgs eventArgs)
+    private async Task Consumer_ReceivingEvent(object sender, BasicDeliverEventArgs eventArgs)
     {
         var eventType = eventArgs.BasicProperties.Type ?? eventArgs.RoutingKey;
         try
@@ -157,7 +168,7 @@ internal class EventConsumerService : IEventConsumerService
                 _logger.LogTrace("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}",
                     subscribersInformation.EventTypeName,
                     eventArgs.BasicProperties.MessageId);
-                var eventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out Guid messageId)
+                var eventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out var messageId)
                     ? messageId
                     : Guid.NewGuid();
 
@@ -204,21 +215,20 @@ internal class EventConsumerService : IEventConsumerService
         Dictionary<string, string> GetEventHeaders()
         {
             var eventHeaders = new Dictionary<string, string>();
-            if (eventArgs.BasicProperties.Headers is not null)
+            if (eventArgs.BasicProperties.Headers is null) return eventHeaders;
+            
+            foreach (var header in eventArgs.BasicProperties.Headers)
             {
-                foreach (var header in eventArgs.BasicProperties.Headers)
-                {
-                    if (header.Value is null)
-                        continue;
+                if (header.Value is null)
+                    continue;
 
-                    string headerValue;
-                    if (header.Value is byte[] headerValueBytes)
-                        headerValue = Encoding.UTF8.GetString(headerValueBytes);
-                    else
-                        headerValue = header.Value.ToString();
+                string headerValue;
+                if (header.Value is byte[] headerValueBytes)
+                    headerValue = Encoding.UTF8.GetString(headerValueBytes);
+                else
+                    headerValue = header.Value.ToString();
 
-                    eventHeaders.Add(header.Key, headerValue);
-                }
+                eventHeaders.Add(header.Key, headerValue);
             }
 
             return eventHeaders;

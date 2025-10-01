@@ -15,8 +15,6 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 {
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
 
-    public int RetryConnectionCount { get; }
-
     private readonly IConnectionFactory _connectionFactory;
     private readonly RabbitMqHostSettings _connectionOptions;
     private readonly ILogger<RabbitMqConnection> _logger;
@@ -25,47 +23,11 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     public RabbitMqConnection(RabbitMqHostSettings virtualHostSettings, IServiceProvider serviceProvider)
     {
         _connectionOptions = virtualHostSettings;
-        var connectionFactory = new ConnectionFactory
-        {
-            HostName = _connectionOptions.HostName,
-            Port = _connectionOptions.HostPort!.Value,
-            VirtualHost = _connectionOptions.VirtualHost,
-            UserName = _connectionOptions.UserName,
-            Password = _connectionOptions.Password,
-            DispatchConsumersAsync = true
-        };
-
         _logger = serviceProvider.GetRequiredService<ILogger<RabbitMqConnection>>();
-        if (_connectionOptions.UseTls == true)
-        {
-            if (string.IsNullOrEmpty(_connectionOptions.ClientCertPath))
-                _logger.LogError(
-                    "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientCertPath is not set.",
-                    _connectionOptions.VirtualHost, _connectionOptions.HostName);
-            
-            if (string.IsNullOrEmpty(_connectionOptions.ClientKeyPath))
-                _logger.LogError(
-                    "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientKeyPath is not set.",
-                    _connectionOptions.VirtualHost, _connectionOptions.HostName);
-            
-            var clientCertFullPath = GetFullPath(_connectionOptions.ClientCertPath);
-            var clientKeyFullPath = GetFullPath(_connectionOptions.ClientKeyPath);
-            connectionFactory.Ssl = new SslOption
-            {
-                Enabled = true,
-                ServerName = _connectionOptions.HostName,
-                CertificateValidationCallback = (_, _, _, _) => true,
-                Version = _connectionOptions.SslProtocolVersion!.Value,                                                      
-                Certs =
-                [
-                    X509Certificate2.CreateFromPemFile(clientCertFullPath, clientKeyFullPath)
-                ]
-            };
-        }
-        
-        _connectionFactory = connectionFactory;
-        RetryConnectionCount = (int)_connectionOptions.RetryConnectionCount!;
+        _connectionFactory = CreateConnectionFactory();
     }
+
+    #region TryConnect
 
     private readonly Lock _lockOpenConnection = new();
 
@@ -81,7 +43,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
             var policy = Policy.Handle<SocketException>()
                 .Or<BrokerUnreachableException>()
-                .WaitAndRetry(RetryConnectionCount, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                .WaitAndRetry(_connectionOptions.RetryConnectionCount, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
                     (ex, time) =>
                     {
                         _logger.LogWarning(ex,
@@ -115,6 +77,10 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         }
     }
 
+    #endregion
+
+    #region Create channel
+    
     public IModel CreateChannel()
     {
         TryConnect();
@@ -126,7 +92,11 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         return _connection.CreateModel();
     }
 
+    #endregion
+
     #region Connection event handlers
+    
+    private readonly Lock _lockReOpenConnection = new();
 
     /// <summary>
     /// The event handler for reconnecting when the connection is blocked
@@ -135,8 +105,11 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     {
         if (_disposed) return;
 
-        DisposeConnectionIfExists();
-        TryConnect();
+        lock (_lockReOpenConnection)
+        {
+            DisposeConnectionIfExists();
+            TryConnect();
+        }
     }
 
     /// <summary>
@@ -145,9 +118,12 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     private void OnCallbackException(object sender, CallbackExceptionEventArgs e)
     {
         if (_disposed) return;
-
-        DisposeConnectionIfExists();
-        TryConnect();
+        
+        lock (_lockReOpenConnection)
+        {
+            DisposeConnectionIfExists();
+            TryConnect();
+        }
     }
 
     /// <summary>
@@ -156,14 +132,63 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     private void OnConnectionShutdown(object sender, ShutdownEventArgs reason)
     {
         if (_disposed) return;
-
-        DisposeConnectionIfExists();
-        TryConnect();
+        
+        lock (_lockReOpenConnection)
+        {
+            DisposeConnectionIfExists();
+            TryConnect();
+        }
     }
 
     #endregion
 
     #region Helper methods
+
+    /// <summary>
+    /// Creates the connection factory based on the given connection options. If the UseTls option is enabled,
+    /// it configures the SSL settings including loading the client certificate and key from the specified file paths.
+    /// </summary>
+    /// <returns>A configured instance of <see cref="ConnectionFactory"/>.</returns>
+    private ConnectionFactory CreateConnectionFactory()
+    {
+        var connectionFactory = new ConnectionFactory
+        {
+            HostName = _connectionOptions.HostName,
+            Port = _connectionOptions.HostPort!.Value,
+            VirtualHost = _connectionOptions.VirtualHost,
+            UserName = _connectionOptions.UserName,
+            Password = _connectionOptions.Password,
+            DispatchConsumersAsync = true
+        };
+
+        if (_connectionOptions.UseTls != true) return connectionFactory;
+        
+        if (string.IsNullOrEmpty(_connectionOptions.ClientCertPath))
+            _logger.LogError(
+                "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientCertPath is not set.",
+                _connectionOptions.VirtualHost, _connectionOptions.HostName);
+            
+        if (string.IsNullOrEmpty(_connectionOptions.ClientKeyPath))
+            _logger.LogError(
+                "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientKeyPath is not set.",
+                _connectionOptions.VirtualHost, _connectionOptions.HostName);
+            
+        var clientCertFullPath = GetFullPath(_connectionOptions.ClientCertPath);
+        var clientKeyFullPath = GetFullPath(_connectionOptions.ClientKeyPath);
+        connectionFactory.Ssl = new SslOption
+        {
+            Enabled = true,
+            ServerName = _connectionOptions.HostName,
+            CertificateValidationCallback = (_, _, _, _) => true,
+            Version = _connectionOptions.SslProtocolVersion!.Value,                                                      
+            Certs =
+            [
+                X509Certificate2.CreateFromPemFile(clientCertFullPath, clientKeyFullPath)
+            ]
+        };
+
+        return connectionFactory;
+    }
     
     /// <summary>
     /// Get certificate file path from the relative path
