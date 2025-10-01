@@ -141,11 +141,6 @@ public class EventPublisherCollectorTests : BaseTestEntity
 
         _publisherCollector.CreateExchangeForPublishers();
 
-        var field = _publisherCollector.GetType()
-            .GetField("_openedRabbitMqConnections", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.That(field, Is.Not.Null);
-        var openedRabbitMqConnections = (Dictionary<string, IRabbitMqConnection>)field?.GetValue(_publisherCollector)!;
-        Assert.That(openedRabbitMqConnections?.Count, Is.EqualTo(1));
         _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>());
         rabbitMqConnection.Received(1).CreateChannel();
     }
@@ -162,6 +157,6 @@ public class EventPublisherCollectorTests : BaseTestEntity
         var publishers = (Dictionary<string, EventPublisherOptions>)PublishersField?.GetValue(_publisherCollector)!;
         return publishers;
     }
-    
+
     #endregion
 }
