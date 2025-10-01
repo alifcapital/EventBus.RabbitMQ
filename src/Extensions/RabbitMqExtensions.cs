@@ -72,7 +72,7 @@ public static class RabbitMqExtensions
 
         services.AddSingleton(settings.DefaultSettings);
         services.AddSingleton<IEventConsumerServiceCreator, EventConsumerServiceCreator>();
-        services.AddSingleton<IRabbitMqConnectionCreator, RabbitMqConnectionCreator>();
+        services.AddSingleton<IRabbitMqConnectionManager, RabbitMqConnectionManager>();
         EventConsumerService.EventSubscribersHandled += eventSubscribersHandled;
 
         AddOrUpdateVirtualHostSettings(settings, virtualHostSettingsOptions);

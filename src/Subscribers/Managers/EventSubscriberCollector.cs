@@ -108,7 +108,7 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
         {
             try
             {
-                consumer.Value.StartAndSubscribeReceiver();
+                consumer.Value.CreateChannelAndSubscribeReceiver();
             }
             catch (Exception e)
             {

@@ -66,9 +66,9 @@ public class RabbitMqHostSettings
     public Dictionary<string, object> ExchangeArguments { get; set; } = new();
 
     /// <summary>
-    /// Retry count to connect to the RabbitMQ. Default value is "5".
+    /// Retry count to connect to the RabbitMQ. Default value is "3".
     /// </summary>
-    public int? RetryConnectionCount { get; set; }
+    public int RetryConnectionCount { get; set; }
 
     /// <summary>
     /// Naming police for serializing and deserializing properties of Event. Default value is "PascalCase". It can be one of "PascalCase", "CamelCase", "SnakeCaseLower", "SnakeCaseUpper", "KebabCaseLower", or "KebabCaseUpper".

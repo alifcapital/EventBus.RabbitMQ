@@ -13,7 +13,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
 {
     private IServiceProvider _serviceProvider;
     private EventPublisherCollector _publisherCollector;
-    private IRabbitMqConnectionCreator _rabbitMqConnectionCreator;
+    private IRabbitMqConnectionManager _rabbitMqConnectionManager;
 
     #region SetUp
 
@@ -25,8 +25,8 @@ public class EventPublisherCollectorTests : BaseTestEntity
             .Returns(RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions());
         _serviceProvider.GetService(typeof(ILogger<EventPublisherCollector>))
             .Returns(Substitute.For<ILogger<EventPublisherCollector>>());
-        _rabbitMqConnectionCreator = Substitute.For<IRabbitMqConnectionCreator>();
-        _serviceProvider.GetService(typeof(IRabbitMqConnectionCreator)).Returns(_rabbitMqConnectionCreator);
+        _rabbitMqConnectionManager = Substitute.For<IRabbitMqConnectionManager>();
+        _serviceProvider.GetService(typeof(IRabbitMqConnectionManager)).Returns(_rabbitMqConnectionManager);
         _publisherCollector = new EventPublisherCollector(_serviceProvider);
     }
 
@@ -122,7 +122,6 @@ public class EventPublisherCollectorTests : BaseTestEntity
     [Test]
     public void CreateExchangeForPublishers_CallingWithPublisherSettings_ShouldCreateExchange()
     {
-        // Arrange
         var options = new Action<EventPublisherOptions>(x => { x.RoutingKey = "TestRoutingKey"; });
         _publisherCollector.AddPublisher<SimplePublishEvent>(options);
         var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
@@ -137,19 +136,12 @@ public class EventPublisherCollectorTests : BaseTestEntity
         };
         _publisherCollector.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
         var rabbitMqConnection = Substitute.For<IRabbitMqConnection>();
-        _rabbitMqConnectionCreator.CreateConnection(Arg.Any<EventPublisherOptions>(), _serviceProvider)
+        _rabbitMqConnectionManager.GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>())
             .Returns(rabbitMqConnection);
 
-        // Act
         _publisherCollector.CreateExchangeForPublishers();
 
-        // Assert
-        var field = _publisherCollector.GetType()
-            .GetField("_openedRabbitMqConnections", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.That(field, Is.Not.Null);
-        var openedRabbitMqConnections = (Dictionary<string, IRabbitMqConnection>)field?.GetValue(_publisherCollector)!;
-        Assert.That(openedRabbitMqConnections?.Count, Is.EqualTo(1));
-        _rabbitMqConnectionCreator.Received(1).CreateConnection(Arg.Any<EventPublisherOptions>(), _serviceProvider);
+        _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>());
         rabbitMqConnection.Received(1).CreateChannel();
     }
 
@@ -165,6 +157,6 @@ public class EventPublisherCollectorTests : BaseTestEntity
         var publishers = (Dictionary<string, EventPublisherOptions>)PublishersField?.GetValue(_publisherCollector)!;
         return publishers;
     }
-    
+
     #endregion
 }

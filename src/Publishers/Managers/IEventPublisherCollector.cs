@@ -30,10 +30,10 @@ internal interface IEventPublisherCollector
         where TPublishEvent : class, IPublishEvent;
 
     /// <summary>
-    /// Creates RabbitMQ connection for the unique connection ID (VirtualHost+ExchangeName) and cache that.
+    /// Creates RabbitMQ channel after creating and opening RabbitMQ connection.
     /// </summary>
     /// <param name="settings">Publisher setting to open connection</param>
-    /// <returns>Create and return chanel after creating and opening RabbitMQ connection</returns>
+    /// <returns>Newly created RabbitMQ channel</returns>
     public IModel CreateRabbitMqChannel(EventPublisherOptions settings);
 
     /// <summary>

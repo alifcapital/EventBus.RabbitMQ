@@ -10,11 +10,6 @@ internal interface IRabbitMqConnection : IDisposable
     bool IsConnected { get; }
 
     /// <summary>
-    /// To get retry count
-    /// </summary>
-    int RetryConnectionCount { get;  }
-
-    /// <summary>
     /// For connecting the server to the RabbitMQ
     /// </summary>
     /// <returns>Returns true, if it's successful connected</returns>

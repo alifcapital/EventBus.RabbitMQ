@@ -13,5 +13,5 @@ internal interface IEventConsumerService
     /// <summary>
     /// Starts receiving events by creating a consumer
     /// </summary>
-    public void StartAndSubscribeReceiver();
+    public void CreateChannelAndSubscribeReceiver();
 }

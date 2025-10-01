@@ -11,7 +11,7 @@ namespace EventBus.RabbitMQ.Tests.UnitTests.Extensions;
 public class RabbitMqExtensionsTests : BaseTestEntity
 {
     private IServiceProvider _serviceProvider;
-    private IRabbitMqConnectionCreator _rabbitMqConnectionCreator;
+    private IRabbitMqConnectionManager _rabbitMqConnectionManager;
 
     #region SetUp
 
@@ -23,8 +23,8 @@ public class RabbitMqExtensionsTests : BaseTestEntity
             .Returns(RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions());
         _serviceProvider.GetService(typeof(ILogger<EventPublisherCollector>))
             .Returns(Substitute.For<ILogger<EventPublisherCollector>>());
-        _rabbitMqConnectionCreator = Substitute.For<IRabbitMqConnectionCreator>();
-        _serviceProvider.GetService(typeof(IRabbitMqConnectionCreator)).Returns(_rabbitMqConnectionCreator);
+        _rabbitMqConnectionManager = Substitute.For<IRabbitMqConnectionManager>();
+        _serviceProvider.GetService(typeof(IRabbitMqConnectionManager)).Returns(_rabbitMqConnectionManager);
     }
 
     #endregion

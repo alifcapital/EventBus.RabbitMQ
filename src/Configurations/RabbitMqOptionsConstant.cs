@@ -79,6 +79,7 @@ internal static class RabbitMqOptionsConstant
             Password = Password,
             ExchangeName = ExchangeName,
             ExchangeType = ExchangeType,
+            QueueName = QueueName,
             RetryConnectionCount = RetryConnectionCount,
             PropertyNamingPolicy = NamingPolicyType.PascalCase,
             EventNamingPolicy = NamingPolicyType.PascalCase,
