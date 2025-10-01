@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using EventBus.RabbitMQ.Configurations;
+using EventBus.RabbitMQ.Exceptions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Polly;
@@ -20,7 +21,6 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     private readonly RabbitMqHostSettings _connectionOptions;
     private readonly ILogger<RabbitMqConnection> _logger;
     private IConnection _connection;
-    private static string _connectTitle;
 
     public RabbitMqConnection(RabbitMqHostSettings virtualHostSettings, IServiceProvider serviceProvider)
     {
@@ -65,12 +65,9 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         
         _connectionFactory = connectionFactory;
         RetryConnectionCount = (int)_connectionOptions.RetryConnectionCount!;
-
-        _connectTitle =
-            $"The RabbitMQ connection is opened for an event subscriber or publisher for the '{_connectionOptions.HostName}':{_connectionOptions.HostPort} host's '{_connectionOptions.VirtualHost}' virtual host.";
     }
 
-    readonly Lock _lockOpenConnection = new();
+    private readonly Lock _lockOpenConnection = new();
 
     public bool TryConnect()
     {
@@ -94,25 +91,79 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
                     }
                 );
 
-            policy.Execute(() => { _connection = _connectionFactory.CreateConnection(); });
+            var applicationName = AppDomain.CurrentDomain.FriendlyName;
+            var connectionDisplayName =
+                $"For the {_connectionOptions.VirtualHost} virtual host from the {applicationName} service";
+            policy.Execute(() => { _connection = _connectionFactory.CreateConnection(connectionDisplayName); });
 
-            if (IsConnected && _connection is not null)
+            if (IsConnected)
             {
-                _connection.ConnectionShutdown += OnConnectionShutdown;
-                _connection.CallbackException += OnCallbackException;
-                _connection.ConnectionBlocked += OnConnectionBlocked;
+                _connection!.ConnectionShutdown += OnConnectionShutdown;
+                _connection!.CallbackException += OnCallbackException;
+                _connection!.ConnectionBlocked += OnConnectionBlocked;
 
-                _logger.LogDebug(_connectTitle);
+                _logger.LogInformation("The RabbitMQ connection is opened for an event subscribers or publishers on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
+                    _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
 
                 return true;
             }
 
             _logger.LogCritical(
-                "FATAL ERROR: Connection to the {VirtualHost} virtual host of {HostName} RabbitMQ host could not be created and opened",
+                "FATAL ERROR: Connection to the {VirtualHost} virtual host of {HostName} RabbitMQ host could not be opened",
                 _connectionOptions.VirtualHost, _connectionOptions.HostName);
             return false;
         }
     }
+
+    public IModel CreateChannel()
+    {
+        TryConnect();
+
+        if (!IsConnected)
+            throw new EventBusException(
+                $"RabbitMQ connection is not opened yet to the {_connectionOptions.VirtualHost} virtual host of {_connectionOptions.HostName}.");
+
+        return _connection.CreateModel();
+    }
+
+    #region Connection event handlers
+
+    /// <summary>
+    /// The event handler for reconnecting when the connection is blocked
+    /// </summary>
+    private void OnConnectionBlocked(object sender, ConnectionBlockedEventArgs e)
+    {
+        if (_disposed) return;
+
+        DisposeConnectionIfExists();
+        TryConnect();
+    }
+
+    /// <summary>
+    /// The event handler for reconnecting when an exception is thrown
+    /// </summary>
+    private void OnCallbackException(object sender, CallbackExceptionEventArgs e)
+    {
+        if (_disposed) return;
+
+        DisposeConnectionIfExists();
+        TryConnect();
+    }
+
+    /// <summary>
+    /// The event handler for reconnecting when the connection is shutdown
+    /// </summary>
+    private void OnConnectionShutdown(object sender, ShutdownEventArgs reason)
+    {
+        if (_disposed) return;
+
+        DisposeConnectionIfExists();
+        TryConnect();
+    }
+
+    #endregion
+
+    #region Helper methods
     
     /// <summary>
     /// Get certificate file path from the relative path
@@ -130,38 +181,32 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
             
         return clientKeyPath;
     }
-
-    void OnConnectionBlocked(object sender, ConnectionBlockedEventArgs e)
+    
+    /// <summary>
+    /// When something goes wrong with the connection, we want to dispose the old connection if exists
+    /// to be able to create a new one.
+    /// </summary>
+    private void DisposeConnectionIfExists()
     {
-        if (_disposed) return;
+        if (_connection == null) return;
+        
+        try
+        {
+            _connection.ConnectionShutdown -= OnConnectionShutdown;
+            _connection.CallbackException -= OnCallbackException;
+            _connection.ConnectionBlocked -= OnConnectionBlocked;
 
-        TryConnect();
+            _connection.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disposing old RabbitMQ connection.");
+        }
+
+        _connection = null;
     }
 
-    void OnCallbackException(object sender, CallbackExceptionEventArgs e)
-    {
-        if (_disposed) return;
-
-        TryConnect();
-    }
-
-    void OnConnectionShutdown(object sender, ShutdownEventArgs reason)
-    {
-        if (_disposed) return;
-
-        TryConnect();
-    }
-
-    public IModel CreateChannel()
-    {
-        TryConnect();
-
-        if (!IsConnected)
-            throw new InvalidOperationException(
-                $"RabbitMQ connection is not opened yet to the {_connectionOptions.VirtualHost} virtual host of {_connectionOptions.HostName}.");
-
-        return _connection.CreateModel();
-    }
+    #endregion
 
     #region Dispose
 
@@ -182,8 +227,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
         try
         {
-            _connection?.Dispose();
-            _connection = null;
+            DisposeConnectionIfExists();
 
             _disposed = true;
         }
