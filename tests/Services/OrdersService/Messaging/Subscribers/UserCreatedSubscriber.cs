@@ -31,6 +31,9 @@ public class UserCreatedSubscriber3(ILogger<UserCreatedSubscriber3> logger) : IE
         logger.LogInformation("Id ({Id}): '{UserName}' user is created with the {UserId} id", @event.EventId,
             @event.UserName, @event.UserId);
         
+        // TODO: this is for testing purposes only, do not remove.
+        // throw new Exception("Some exception happened in the UserCreatedSubscriber3");
+        
         await Task.CompletedTask;
     }
 }
