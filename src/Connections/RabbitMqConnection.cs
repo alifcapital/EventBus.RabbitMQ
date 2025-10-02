@@ -55,7 +55,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
             var applicationName = AppDomain.CurrentDomain.FriendlyName;
             var connectionDisplayName =
-                $"For the {_connectionOptions.VirtualHost} virtual host from the {applicationName} service";
+                $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
             policy.Execute(() => { _connection = _connectionFactory.CreateConnection(connectionDisplayName); });
 
             if (IsConnected)
