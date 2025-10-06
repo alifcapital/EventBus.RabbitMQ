@@ -43,7 +43,8 @@ internal class EventBusTraceInstrumentation
     private static readonly ActivitySource ActivitySource = new(InstrumentationName);
 
     /// <summary>
-    /// For creating activity and use it to add a span
+    /// For creating activity and use it to add a span.
+    /// Also adds span type for being able to filter the spans from the tracing system.
     /// </summary>
     /// <param name="name">Name of new activity</param>
     /// <param name="kind">Type of new activity. The default is <see cref="ActivityKind.Internal"/></param>
@@ -53,6 +54,11 @@ internal class EventBusTraceInstrumentation
     {
         ActivityContext.TryParse(traceParentId, null, out ActivityContext parentContext);
         var activity = ActivitySource.StartActivity(name, kind, parentContext);
+        if (activity == null) return null;
+        
+        const string spanTypeTagName = "messaging.system";
+        const string spanType = "RabbitMQ";
+        activity.AddTag(spanTypeTagName, spanType);
 
         return activity;
     }
