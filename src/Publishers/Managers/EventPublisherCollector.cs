@@ -117,10 +117,27 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
 
     #region CreateRabbitMqChannel
 
+    /// <summary>
+    /// Creates RabbitMQ channel after creating and opening RabbitMQ connection.
+    /// </summary>
+    /// <param name="settings">The publisher setting to open connection</param>
+    /// <returns>Newly created RabbitMQ channel</returns>
+    /// <exception cref="EventBusException">
+    /// Error while opening the RabbitMQ connection or creating the channel.
+    /// Since the IOException is thrown when there is a problem with the network or the connection to the RabbitMQ server,
+    /// and also that is not inherit from the Exception class, we need to catch it specifically and wrap it in our custom exception.
+    /// </exception>
     public IModel CreateRabbitMqChannel(EventPublisherOptions settings)
     {
-        var connection = _rabbitMqConnectionManager.GetOrCreateConnection(settings.VirtualHostSettings);
-        return connection.CreateChannel();
+        try
+        {
+            var connection = _rabbitMqConnectionManager.GetOrCreateConnection(settings.VirtualHostSettings);
+            return connection.CreateChannel();
+        }
+        catch (IOException ex)
+        {
+            throw new EventBusException(ex, "Error while opening the RabbitMQ connection or creating the channel.");
+        }
     }
 
     #endregion
