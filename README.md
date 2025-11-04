@@ -552,3 +552,8 @@ No, we can't. If we try to create multiple event publishers for the same event t
 
 ### Can we create multiple event subscribers for the same event type?
 Yes, we can. The library is designed to work with multiple event subscribers for the same event type, even if there are multiple event types with the same name, we support them. So, when event received, all event subscribers of event will be executed.
+
+### Is there any way to investigate publishing and receiving events process?
+Yes, we can investigate all processes of publishing and receiving events by enabling `logging` or the `open telemetry` in our application.
+The library uses the standard logging and open telemetry mechanism of .NET, so we can use them to investigate purposes.
+Make sure to set the logging level to `Information` or `Debug` to see detailed logs related to event storage. If the log level is `Debug`, it will show all configuration settings of each publisher and subscriber events while starting the application once.

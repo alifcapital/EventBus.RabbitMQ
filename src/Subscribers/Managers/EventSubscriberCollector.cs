@@ -1,10 +1,13 @@
+using System.Diagnostics;
 using EventBus.RabbitMQ.Configurations;
+using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Subscribers.Consumers;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventStorage.Inbox.EventArgs;
 using EventStorage.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace EventBus.RabbitMQ.Subscribers.Managers;
 
@@ -27,6 +30,8 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
     /// </summary>
     private readonly Dictionary<string, IEventConsumerService> _eventConsumers = new();
 
+    #region AddSubscriber
+    
     public void AddSubscriber<TEvent, TEventHandler>(Action<EventSubscriberOptions> options = null)
         where TEvent : class, ISubscribeEvent
         where TEventHandler : class, IEventSubscriber<TEvent>
@@ -71,6 +76,10 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
         
         subscribersInformation.AddSubscriberIfNotExists(typeOfSubscriber, typeOfHandler);
     }
+    
+    #endregion
+    
+    #region SetVirtualHostAndOwnSettingsOfSubscribers
 
     /// <summary>
     /// Setting the virtual host and other unassigned settings of subscribers
@@ -86,6 +95,10 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
             eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, eventTypeName);
         }
     }
+    
+    #endregion
+    
+    #region CreateConsumerForEachQueueAndStartReceivingEvents
 
     public void CreateConsumerForEachQueueAndStartReceivingEvents()
     {
@@ -116,6 +129,10 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
             }
         }
     }
+    
+    #endregion
+
+    #region On exceuting subscribed event
 
     /// <summary>
     /// Invokes the ExecutingReceivedEvent event to be able to execute the event before the subscriber.
@@ -152,4 +169,39 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
             OnExecutingSubscribedEvent(@event, virtualHostName, e.ServiceProvider);
         }
     }
+
+    #endregion
+    
+    #region PrintLoadedSubscribersInformation
+    
+    public void PrintLoadedSubscribersInformation()
+    {
+        var logger = serviceProvider.GetRequiredService<ILogger<IEventSubscriberCollector>>();
+        var loadedSubscribersCount = Subscribers.Count;
+        using var activity = EventBusTraceInstrumentation.StartActivity(
+            $"MQ: Total {loadedSubscribersCount} subscribers are loaded.", ActivityKind.Server);
+        logger.LogInformation("Total {loadedSubscribersCount} subscribers are loaded.", loadedSubscribersCount);
+        
+        foreach (var (eventName, subscribersInformation) in Subscribers)
+        {
+            var eventSettings = subscribersInformation.Settings;
+            var subscriberHandlersCount = subscribersInformation.Subscribers.Count;
+            logger.LogDebug(
+                "Loaded subscriber: EventName='{EventName}', VirtualHost='{VirtualHost}', ExchangeName='{ExchangeName}', ExchangeType='{ExchangeType}', RoutingKey='{RoutingKey}', PropertyNamingPolicy='{PropertyNamingPolicy}', QueueName='{QueueName}', HandlersCount='{HandlersCount}'",
+                eventName,
+                eventSettings.VirtualHostSettings.VirtualHost,
+                eventSettings.VirtualHostSettings.ExchangeName,
+                eventSettings.VirtualHostSettings.ExchangeType,
+                eventSettings.RoutingKey,
+                eventSettings.PropertyNamingPolicy,
+                eventSettings.QueueName,
+                subscriberHandlersCount);
+
+            if (subscriberHandlersCount == 0)
+                logger.LogWarning("No subscriber handlers are loaded for the event '{EventName}'", eventName);
+        }
+        
+    }
+    
+    #endregion
 }

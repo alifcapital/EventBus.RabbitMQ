@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
+using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using Microsoft.Extensions.DependencyInjection;
@@ -140,5 +142,29 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         }
     }
 
+    #endregion
+    
+    #region PrintLoadedPublishersInformation
+    
+    public void PrintLoadedPublishersInformation()
+    {
+        var loadedPublishersCount = _publishersConnectionInfo.Count;
+        using var activity = EventBusTraceInstrumentation.StartActivity(
+            $"MQ: Total {loadedPublishersCount} publishers are loaded.", ActivityKind.Server);
+        _logger.LogInformation("Total {loadedPublishersCount} publishers are loaded.", loadedPublishersCount);
+        
+        foreach (var (eventName, eventSettings) in _publishersConnectionInfo)
+        {
+            _logger.LogDebug(
+                "Loaded publisher: EventName='{EventName}', VirtualHost='{VirtualHost}', ExchangeName='{ExchangeName}', ExchangeType='{ExchangeType}', RoutingKey='{RoutingKey}', PropertyNamingPolicy='{PropertyNamingPolicy}'",
+                eventName,
+                eventSettings.VirtualHostSettings.VirtualHost,
+                eventSettings.VirtualHostSettings.ExchangeName,
+                eventSettings.VirtualHostSettings.ExchangeType,
+                eventSettings.RoutingKey,
+                eventSettings.PropertyNamingPolicy);
+        }
+    }
+    
     #endregion
 }

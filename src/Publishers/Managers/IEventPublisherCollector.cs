@@ -40,4 +40,9 @@ internal interface IEventPublisherCollector
     /// Creating an exchange for each registered publisher and 
     /// </summary>
     internal void CreateExchangeForPublishers();
+
+    /// <summary>
+    /// For printing all loaded publishers information to the logger for investigation purposes.
+    /// </summary>
+    internal void PrintLoadedPublishersInformation();
 }

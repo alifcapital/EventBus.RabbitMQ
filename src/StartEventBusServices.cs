@@ -5,6 +5,10 @@ using Microsoft.Extensions.Logging;
 
 namespace EventBus.RabbitMQ;
 
+/// <summary>
+/// The background service to start preparing publisher exchanges and subscriber queues.
+/// And also print loaded publisher and subscriber information to the logger.
+/// </summary>
 internal class StartEventBusServices(
     IEventSubscriberCollector subscriberCollector,
     IEventPublisherCollector publisherCollector,
@@ -17,6 +21,9 @@ internal class StartEventBusServices(
         {
             publisherCollector.CreateExchangeForPublishers();
             subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEvents();
+            
+            publisherCollector.PrintLoadedPublishersInformation();
+            subscriberCollector.PrintLoadedSubscribersInformation();
         }
         catch (Exception e)
         {

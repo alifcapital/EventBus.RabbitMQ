@@ -37,13 +37,14 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         {
             if (IsConnected) return true;
 
-            _logger.LogTrace(
+            _logger.LogDebug(
                 "RabbitMQ Client is trying to connect to the {VirtualHost} virtual host of {HostName} RabbitMQ host",
                 _connectionOptions.VirtualHost, _connectionOptions.HostName);
 
             var policy = Policy.Handle<SocketException>()
                 .Or<BrokerUnreachableException>()
-                .WaitAndRetry(_connectionOptions.RetryConnectionCount, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                .WaitAndRetry(_connectionOptions.RetryConnectionCount,
+                    retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
                     (ex, time) =>
                     {
                         _logger.LogWarning(ex,
@@ -64,14 +65,15 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
                 _connection!.CallbackException += OnCallbackException;
                 _connection!.ConnectionBlocked += OnConnectionBlocked;
 
-                _logger.LogInformation("The RabbitMQ connection is opened for an event subscribers or publishers on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
+                _logger.LogInformation(
+                    "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
                     _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
 
                 return true;
             }
 
             _logger.LogCritical(
-                "FATAL ERROR: Connection to the {VirtualHost} virtual host of {HostName} RabbitMQ host could not be opened",
+                "Connection to the {VirtualHost} virtual host of {HostName} RabbitMQ host could not be opened",
                 _connectionOptions.VirtualHost, _connectionOptions.HostName);
             return false;
         }
@@ -80,7 +82,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     #endregion
 
     #region Create channel
-    
+
     public IModel CreateChannel()
     {
         TryConnect();
@@ -95,7 +97,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     #endregion
 
     #region Connection event handlers
-    
+
     private readonly Lock _lockReOpenConnection = new();
 
     /// <summary>
@@ -118,7 +120,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     private void OnCallbackException(object sender, CallbackExceptionEventArgs e)
     {
         if (_disposed) return;
-        
+
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
@@ -132,7 +134,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     private void OnConnectionShutdown(object sender, ShutdownEventArgs reason)
     {
         if (_disposed) return;
-        
+
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
@@ -162,17 +164,17 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         };
 
         if (_connectionOptions.UseTls != true) return connectionFactory;
-        
+
         if (string.IsNullOrEmpty(_connectionOptions.ClientCertPath))
             _logger.LogError(
                 "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientCertPath is not set.",
                 _connectionOptions.VirtualHost, _connectionOptions.HostName);
-            
+
         if (string.IsNullOrEmpty(_connectionOptions.ClientKeyPath))
             _logger.LogError(
                 "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientKeyPath is not set.",
                 _connectionOptions.VirtualHost, _connectionOptions.HostName);
-            
+
         var clientCertFullPath = GetFullPath(_connectionOptions.ClientCertPath);
         var clientKeyFullPath = GetFullPath(_connectionOptions.ClientKeyPath);
         connectionFactory.Ssl = new SslOption
@@ -180,7 +182,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
             Enabled = true,
             ServerName = _connectionOptions.HostName,
             CertificateValidationCallback = (_, _, _, _) => true,
-            Version = _connectionOptions.SslProtocolVersion!.Value,                                                      
+            Version = _connectionOptions.SslProtocolVersion!.Value,
             Certs =
             [
                 X509Certificate2.CreateFromPemFile(clientCertFullPath, clientKeyFullPath)
@@ -189,7 +191,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
         return connectionFactory;
     }
-    
+
     /// <summary>
     /// Get certificate file path from the relative path
     /// </summary>
@@ -203,10 +205,10 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
         if (!File.Exists(clientKeyPath))
             throw new Exception($"The '{relativePath}' certificate file path of the RabbitMQ does not exist.");
-            
+
         return clientKeyPath;
     }
-    
+
     /// <summary>
     /// When something goes wrong with the connection, we want to dispose the old connection if exists
     /// to be able to create a new one.
@@ -214,7 +216,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     private void DisposeConnectionIfExists()
     {
         if (_connection == null) return;
-        
+
         try
         {
             _connection.ConnectionShutdown -= OnConnectionShutdown;
@@ -223,9 +225,13 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
             _connection.Dispose();
         }
+        catch (IOException ex)
+        {
+            _logger.LogError(ex, "Error while disposing old RabbitMQ connection.");
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error disposing old RabbitMQ connection.");
+            _logger.LogError(ex, "Error while disposing old RabbitMQ connection.");
         }
 
         _connection = null;
@@ -250,16 +256,8 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     {
         if (_disposed) return;
 
-        try
-        {
-            DisposeConnectionIfExists();
-
-            _disposed = true;
-        }
-        catch (IOException ex)
-        {
-            _logger.LogCritical(ex.ToString());
-        }
+        DisposeConnectionIfExists();
+        _disposed = true;
     }
 
     ~RabbitMqConnection()

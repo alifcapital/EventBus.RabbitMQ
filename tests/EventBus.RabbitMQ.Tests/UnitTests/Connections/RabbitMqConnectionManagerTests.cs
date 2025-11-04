@@ -1,11 +1,8 @@
 ﻿using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
-using EventBus.RabbitMQ.Subscribers.Consumers;
-using EventBus.RabbitMQ.Subscribers.Options;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
-using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Connections;
 

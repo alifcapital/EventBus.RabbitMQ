@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using EventBus.RabbitMQ.Instrumentation;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Publishers.Models;
 using Microsoft.Extensions.Logging;
@@ -74,19 +75,24 @@ internal class EventPublisherManager(
             return;
         }
 
+        var eventTypeName = publishEvent.GetType().Name;
         try
         {
-            var traceParentId = Activity.Current?.Id;
             var publisherType = publishEvent.GetType();
             var eventSettings = eventPublisherCollector.GetPublisherSettings(publishEvent);
+            eventTypeName = eventSettings.EventTypeName;
+
+            logger.LogDebug("MQ: Publishing event '{EventName}' (ID: {EventId})", eventTypeName, publishEvent.EventId);
+
+            var traceParentId = Activity.Current?.Id;
             using var activity = EventBusTraceInstrumentation.StartActivity(
-                $"MQ: Publishing '{eventSettings.EventTypeName}' event", ActivityKind.Producer, traceParentId);
+                $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer, traceParentId);
 
             using var channel = eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
 
             var properties = channel.CreateBasicProperties();
             properties.MessageId = publishEvent.EventId.ToString();
-            properties.Type = eventSettings.EventTypeName;
+            properties.Type = eventTypeName;
 
             var headers = new Dictionary<string, object>();
             properties.Headers = headers;
@@ -105,13 +111,13 @@ internal class EventPublisherManager(
             if (activity is not null)
             {
                 if (EventBusTraceInstrumentation.ShouldAttachEventPayload)
-                    activity.AddEvent(new ActivityEvent($"{EventBusTraceInstrumentation.EventPayloadTag}: {payload}"));
+                    activity.AddEvent(new ActivityEvent($"{EventBusInvestigationTagNames.EventPayloadTag}: {payload}"));
 
                 if (EventBusTraceInstrumentation.ShouldAttachEventHeaders)
                 {
                     var headersAsJson = JsonSerializer.Serialize(headers);
                     activity.AddEvent(
-                        new ActivityEvent($"{EventBusTraceInstrumentation.EventHeadersTag}: {headersAsJson}"));
+                        new ActivityEvent($"{EventBusInvestigationTagNames.EventHeadersTag}: {headersAsJson}"));
                 }
             }
 
@@ -121,7 +127,7 @@ internal class EventPublisherManager(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error while opening the RabbitMQ connection or publishing the event.");
+            logger.LogError(ex, "Error while publishing RabbitMQ event '{EventName}'.", eventTypeName);
             throw;
         }
     }
