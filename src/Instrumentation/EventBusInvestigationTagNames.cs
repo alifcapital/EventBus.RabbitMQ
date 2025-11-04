@@ -19,21 +19,6 @@ public class EventBusInvestigationTagNames : EventStorageInvestigationTagNames
     internal const string EventHeadersTag = "Event.Headers";
     
     /// <summary>
-    /// The tag to add the virtual host name of RabbitMQ to a trace.
-    /// </summary>
-    internal const string EventHostNameTag = "event.virtual-host-name";
-    
-    /// <summary>
-    /// The tag to add the exchange name of RabbitMQ to a trace.
-    /// </summary>
-    internal const string EventExchangeNameTag = "event.exchange-name";
-    
-    /// <summary>
-    /// The tag to add the routing key of RabbitMQ to a trace.
-    /// </summary>
-    internal const string EventRoutingKeyTag = "event.routing-key";
-    
-    /// <summary>
     /// The tag to add the received type name of event to a trace.
     /// </summary>
     internal const string ReceivedEventTypeTag = "event.received-type";

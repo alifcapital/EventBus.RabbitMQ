@@ -83,20 +83,11 @@ internal class EventPublisherManager(
             var eventSettings = eventPublisherCollector.GetPublisherSettings(publishEvent);
             eventTypeName = eventSettings.EventTypeName;
 
-            var scopedTags = new Dictionary<string, object>
-            {
-                { EventBusInvestigationTagNames.EventIdTag, publishEvent.EventId },
-                { EventBusInvestigationTagNames.EventHostNameTag, eventSettings.VirtualHostSettings.HostName },
-                { EventBusInvestigationTagNames.EventExchangeNameTag, eventSettings.VirtualHostSettings.ExchangeName },
-                { EventBusInvestigationTagNames.EventRoutingKeyTag, eventSettings.RoutingKey }
-            };
-            using var _ = logger.BeginScope(scopedTags);
-            logger.LogDebug("MQ: Publishing event '{EventName}'", eventTypeName);
+            logger.LogDebug("MQ: Publishing event '{EventName}' (ID: {EventId})", eventTypeName, publishEvent.EventId);
 
             var traceParentId = Activity.Current?.Id;
             using var activity = EventBusTraceInstrumentation.StartActivity(
-                $"MQ: Publishing event '{eventTypeName}'", ActivityKind.Producer, traceParentId);
-            activity?.AddTags(scopedTags);
+                $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer, traceParentId);
 
             using var channel = eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
 
