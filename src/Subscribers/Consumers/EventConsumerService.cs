@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
+using EventBus.RabbitMQ.Instrumentation;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Subscribers.Models;
@@ -137,9 +138,9 @@ internal class EventConsumerService : IEventConsumerService
             }
             catch (Exception e)
             {
-                var eventPayloadData = $"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}";
+                var eventPayloadData = $"{EventBusInvestigationTagNames.EventPayloadTag}: {eventPayload}";
                 var eventHeadersData =
-                    $"{EventBusTraceInstrumentation.EventHeadersTag}: {SerializeData(eventArgs.BasicProperties.Headers)}";
+                    $"{EventBusInvestigationTagNames.EventHeadersTag}: {SerializeData(eventArgs.BasicProperties.Headers)}";
                 _logger.LogError(e,
                     "----- ERROR while reading the headers of '{EventType}' event type with the '{RoutingKey}' routing key and '{EventId}' event id. {EventPayload}, {Headers}.",
                     eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId, eventPayloadData,
@@ -155,17 +156,17 @@ internal class EventConsumerService : IEventConsumerService
 
             if (EventBusTraceInstrumentation.ShouldAttachEventPayload)
                 activity?.AddEvent(
-                    new ActivityEvent($"{EventBusTraceInstrumentation.EventPayloadTag}: {eventPayload}"));
+                    new ActivityEvent($"{EventBusInvestigationTagNames.EventPayloadTag}: {eventPayload}"));
 
             var eventHeadersAsJson = SerializeData(headers);
             if (EventBusTraceInstrumentation.ShouldAttachEventHeaders)
                 activity?.AddEvent(
-                    new ActivityEvent($"{EventBusTraceInstrumentation.EventHeadersTag}: {eventHeadersAsJson}"));
+                    new ActivityEvent($"{EventBusInvestigationTagNames.EventHeadersTag}: {eventHeadersAsJson}"));
 
             if (_subscribers.TryGetValue(eventType,
                     out var subscribersInformation))
             {
-                _logger.LogTrace("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}",
+                _logger.LogDebug("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}",
                     subscribersInformation.EventTypeName,
                     eventArgs.BasicProperties.MessageId);
                 var eventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out var messageId)

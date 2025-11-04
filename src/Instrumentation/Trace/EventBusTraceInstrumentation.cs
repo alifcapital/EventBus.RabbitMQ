@@ -26,16 +26,6 @@ internal class EventBusTraceInstrumentation
     /// Option to enable or disable adding a headers of event to a trace.
     /// </summary>
     public static bool ShouldAttachEventHeaders { get; set; }
-    
-    /// <summary>
-    /// The tag to add the payload of event to a trace
-    /// </summary>
-    public const string EventPayloadTag = "Event.Payload";
-    
-    /// <summary>
-    /// The tag to add the headers of event to a trace
-    /// </summary>
-    public const string EventHeadersTag = "Event.Headers";
 
     /// <summary>
     /// The activity source to create a new activity
@@ -52,13 +42,12 @@ internal class EventBusTraceInstrumentation
     /// <returns>Newly created an open telemetry activity</returns>
     internal static Activity StartActivity(string name, ActivityKind kind = ActivityKind.Internal, string traceParentId = null)
     {
-        ActivityContext.TryParse(traceParentId, null, out ActivityContext parentContext);
+        ActivityContext.TryParse(traceParentId, null, out var parentContext);
         var activity = ActivitySource.StartActivity(name, kind, parentContext);
         if (activity == null) return null;
         
-        const string spanTypeTagName = "messaging.system";
         const string spanType = "RabbitMQ";
-        activity.AddTag(spanTypeTagName, spanType);
+        activity.AddTag(EventBusInvestigationTagNames.TraceMessagingTagName, spanType);
 
         return activity;
     }
