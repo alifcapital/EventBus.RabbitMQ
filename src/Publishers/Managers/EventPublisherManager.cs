@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using EventBus.RabbitMQ.Extensions;
 using EventBus.RabbitMQ.Instrumentation;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Publishers.Models;
@@ -75,31 +76,33 @@ internal class EventPublisherManager(
             return;
         }
 
+        var eventTypeName = publishEvent.GetType().Name;
         try
         {
             var publisherType = publishEvent.GetType();
             var eventSettings = eventPublisherCollector.GetPublisherSettings(publishEvent);
+            eventTypeName = eventSettings.EventTypeName;
 
-            var scopeTags = new Dictionary<string, object>
+            var scopedTags = new Dictionary<string, object>
             {
                 { EventBusInvestigationTagNames.EventIdTag, publishEvent.EventId },
                 { EventBusInvestigationTagNames.EventHostNameTag, eventSettings.VirtualHostSettings.HostName },
                 { EventBusInvestigationTagNames.EventExchangeNameTag, eventSettings.VirtualHostSettings.ExchangeName },
                 { EventBusInvestigationTagNames.EventRoutingKeyTag, eventSettings.RoutingKey }
             };
-            using var _ = logger.BeginScope(scopeTags);
-            logger.LogDebug("MQ: Publishing event '{EventName}'",
-                eventSettings.EventTypeName);
+            using var _ = logger.BeginScope(scopedTags);
+            logger.LogDebug("MQ: Publishing event '{EventName}'", eventTypeName);
 
             var traceParentId = Activity.Current?.Id;
             using var activity = EventBusTraceInstrumentation.StartActivity(
-                $"MQ: Publishing event '{eventSettings.EventTypeName}'", ActivityKind.Producer, traceParentId);
+                $"MQ: Publishing event '{eventTypeName}'", ActivityKind.Producer, traceParentId);
+            activity?.AddTags(scopedTags);
 
             using var channel = eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
 
             var properties = channel.CreateBasicProperties();
             properties.MessageId = publishEvent.EventId.ToString();
-            properties.Type = eventSettings.EventTypeName;
+            properties.Type = eventTypeName;
 
             var headers = new Dictionary<string, object>();
             properties.Headers = headers;
@@ -134,7 +137,7 @@ internal class EventPublisherManager(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error while publishing RabbitMQ event.");
+            logger.LogError(ex, "Error while publishing RabbitMQ event '{EventName}'.", eventTypeName);
             throw;
         }
     }

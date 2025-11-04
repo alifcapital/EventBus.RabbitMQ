@@ -32,4 +32,19 @@ public class EventBusInvestigationTagNames : EventStorageInvestigationTagNames
     /// The tag to add the routing key of RabbitMQ to a trace.
     /// </summary>
     internal const string EventRoutingKeyTag = "event.routing-key";
+    
+    /// <summary>
+    /// The tag to add the received type name of event to a trace.
+    /// </summary>
+    internal const string ReceivedEventTypeTag = "event.received-type";
+    
+    /// <summary>
+    /// The tag to add the received routing key of RabbitMQ to a trace.
+    /// </summary>
+    internal const string ReceivedEventRoutingKeyTag = "event.received-routing-key";
+    
+    /// <summary>
+    /// The tag to add the received event id of RabbitMQ to a trace.
+    /// </summary>
+    internal const string ReceivedEventIdTag = "event.received-id";
 }

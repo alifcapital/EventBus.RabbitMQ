@@ -51,16 +51,20 @@ public abstract class BaseEventOptions
     private JsonSerializerOptions _jsonSerializerOptions;
 
     /// <summary>
-    /// Gets JsonSerializerOptions to use on naming police for serializing and deserializing properties of Event 
+    /// Gets JsonSerializerOptions to use on naming police for serializing and deserializing properties of event.
+    /// It uses UnsafeRelaxedJsonEscaping to support UTF-8 characters and ignores null values.
     /// </summary>
-    /// <returns></returns>
+    /// <returns>Newly created instance of <see cref="JsonSerializerOptions"/> passed the property naming policy.</returns>
     public JsonSerializerOptions GetJsonSerializer()
     {
         if (_jsonSerializerOptions is not null)
             return _jsonSerializerOptions;
 
         _jsonSerializerOptions = new JsonSerializerOptions
-            { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+        {   
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
 
         switch (PropertyNamingPolicy)
         {

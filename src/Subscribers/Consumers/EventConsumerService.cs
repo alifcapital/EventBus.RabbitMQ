@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
+using EventBus.RabbitMQ.Extensions;
 using EventBus.RabbitMQ.Instrumentation;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Subscribers.Managers;
@@ -54,9 +55,9 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     #region Create channel and subscribe receiver
-    
+
     private readonly Lock _lockReOpenChannel = new();
-    
+
     /// <summary>
     /// Starts receiving events by creating a consumer
     /// </summary>
@@ -67,7 +68,7 @@ internal class EventConsumerService : IEventConsumerService
         consumer.Received += Consumer_ReceivingEvent;
         _consumerChannel.BasicConsume(queue: _connectionOptions.QueueName, autoAck: false, consumer: consumer);
     }
-    
+
     /// <summary>
     /// To create channel for consumer. If the channel is disconnected, it will try to create a new one.
     /// </summary>
@@ -100,7 +101,7 @@ internal class EventConsumerService : IEventConsumerService
 
         return channel;
     }
-    
+
     /// <summary>
     /// The event handler for recreating the consumer channel when an exception is thrown.
     /// </summary>
@@ -109,18 +110,18 @@ internal class EventConsumerService : IEventConsumerService
         lock (_lockReOpenChannel)
         {
             _logger.LogWarning(e.Exception, "Recreating RabbitMQ consumer channel after exception");
-            
+
             _consumerChannel.CallbackException -= OnCallbackException;
             _consumerChannel.Dispose();
-            
+
             CreateChannelAndSubscribeReceiver();
         }
-    } 
+    }
 
     #endregion
 
     #region Receiving and handling events
-    
+
     /// <summary>
     /// An event to receive all sent events
     /// </summary>
@@ -129,6 +130,15 @@ internal class EventConsumerService : IEventConsumerService
         var eventType = eventArgs.BasicProperties.Type ?? eventArgs.RoutingKey;
         try
         {
+            var scopedTags = new Dictionary<string, object>
+            {
+                { EventBusInvestigationTagNames.ReceivedEventIdTag, eventArgs.BasicProperties.MessageId },
+                { EventBusInvestigationTagNames.ReceivedEventTypeTag, eventArgs.BasicProperties.Type },
+                { EventBusInvestigationTagNames.ReceivedEventRoutingKeyTag, eventArgs.RoutingKey }
+            };
+            using var _ = _logger.BeginScope(scopedTags);
+            _logger.LogDebug("Receiving RabbitMQ event type is '{EventType}'", eventType);
+
             var eventPayload = Encoding.UTF8.GetString(eventArgs.Body.ToArray());
 
             Dictionary<string, string> headers;
@@ -142,17 +152,17 @@ internal class EventConsumerService : IEventConsumerService
                 var eventHeadersData =
                     $"{EventBusInvestigationTagNames.EventHeadersTag}: {SerializeData(eventArgs.BasicProperties.Headers)}";
                 _logger.LogError(e,
-                    "----- ERROR while reading the headers of '{EventType}' event type with the '{RoutingKey}' routing key and '{EventId}' event id. {EventPayload}, {Headers}.",
-                    eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId, eventPayloadData,
-                    eventHeadersData);
+                    "Error while reading the headers of event '{EventType}'. The payload: '{EventPayload}' and headers is '{EventHeaders}'.",
+                    eventType, eventPayloadData, eventHeadersData);
 
                 return;
             }
 
             headers.TryGetValue(EventBusTraceInstrumentation.TraceParentIdKey, out var traceParentId);
 
-            using var activity = EventBusTraceInstrumentation.StartActivity($"MQ: Received '{eventType}' event",
+            using var activity = EventBusTraceInstrumentation.StartActivity($"MQ: Received event '{eventType}'",
                 ActivityKind.Consumer, traceParentId);
+            activity?.AddTags(scopedTags);
 
             if (EventBusTraceInstrumentation.ShouldAttachEventPayload)
                 activity?.AddEvent(
@@ -166,12 +176,11 @@ internal class EventConsumerService : IEventConsumerService
             if (_subscribers.TryGetValue(eventType,
                     out var subscribersInformation))
             {
-                _logger.LogDebug("Received RabbitMQ event, Type is {EventType} and EventId is {EventId}",
-                    subscribersInformation.EventTypeName,
-                    eventArgs.BasicProperties.MessageId);
                 var eventId = Guid.TryParse(eventArgs.BasicProperties.MessageId, out var messageId)
                     ? messageId
                     : Guid.NewGuid();
+                _logger.LogDebug("Received RabbitMQ event '{EventType}' (ID: {EventId})",
+                    subscribersInformation.EventTypeName, eventId);
 
                 using var scope = _serviceProvider.CreateScope();
                 if (_useInbox)
@@ -189,15 +198,13 @@ internal class EventConsumerService : IEventConsumerService
             }
             else
             {
-                _logger.LogWarning(
-                    "No subscription for '{EventType}' event with the '{RoutingKey}' routing key and '{EventId}' event id.",
-                    eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId);
+                _logger.LogWarning("No subscription for '{EventType}' event.", eventType);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "----- ERROR on receiving '{EventType}' event type with the '{RoutingKey}' routing key and '{EventId}' event id.",
+                "Error while receiving event '{EventType}' event with the '{RoutingKey}' routing key and '{EventId}' event id.",
                 eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId);
         }
 
@@ -217,7 +224,7 @@ internal class EventConsumerService : IEventConsumerService
         {
             var eventHeaders = new Dictionary<string, string>();
             if (eventArgs.BasicProperties.Headers is null) return eventHeaders;
-            
+
             foreach (var header in eventArgs.BasicProperties.Headers)
             {
                 if (header.Value is null)
@@ -241,6 +248,9 @@ internal class EventConsumerService : IEventConsumerService
         {
             var jsonSerializerSetting = subscribersInformation.Settings.GetJsonSerializer();
             var virtualHost = _connectionOptions.VirtualHostSettings.VirtualHost;
+
+            _logger.LogDebug("Executing {SubscriberCount} subscribers of received event '{EventTypeName}'",
+                subscribersInformation.Subscribers.Count, subscribersInformation.EventTypeName);
 
             foreach (var subscriber in subscribersInformation.Subscribers)
             {
@@ -279,7 +289,7 @@ internal class EventConsumerService : IEventConsumerService
 
         #endregion
     }
-    
+
     #endregion
 
     #region Helper methods
