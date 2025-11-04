@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
-using EventBus.RabbitMQ.Extensions;
 using EventBus.RabbitMQ.Instrumentation;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Publishers.Models;
