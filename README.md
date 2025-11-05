@@ -553,7 +553,35 @@ No, we can't. If we try to create multiple event publishers for the same event t
 ### Can we create multiple event subscribers for the same event type?
 Yes, we can. The library is designed to work with multiple event subscribers for the same event type, even if there are multiple event types with the same name, we support them. So, when event received, all event subscribers of event will be executed.
 
-### Is there any way to investigate publishing and receiving events process?
-Yes, we can investigate all processes of publishing and receiving events by enabling `logging` or the `open telemetry` in our application.
+
+### Is there any way to investigate publishing and receiving RabbitMQ or EventStorage events process?
+Yes, we can investigate all processes of `RabbitMQ` events and `EventStorage` by enabling `logging` or the `open telemetry` in our application.
 The library uses the standard logging and open telemetry mechanism of .NET, so we can use them to investigate purposes.
-Make sure you set the logging level to `Information` or `Debug` to see detailed logs related to processing event. If the log level is `Debug`, it will show all configuration settings of each publisher and subscriber events while starting the application once.
+Make sure you set the logging level to `Information` or `Debug` to see detailed logs related to processing event. If the log level is `Debug`,
+it will show all configuration settings of each publisher and subscriber of RabbitMQ events while starting the application once.
+
+#### How can we enable logging in the local machine/computer?
+1. When you enable logging in your application, by default only the `Information` and above log level will show. To show more detailed logs, you need to set the log level to `Debug` in you `appsettings.json` file.
+Example:
+```json
+{
+   "Logging": {
+      "LogLevel": {
+         "Default": "Debug"
+      }
+   }
+}
+```
+The `Logging` section is used to set the minimum log level for the application, to show logs in the `OpenTelemetry`'s logs tab.
+
+2. Configure and run the `Aspire` application in your local machine and link your application, for being able to see the detailed `OpenTelemetry` logs from the Aspire. Even you are not using the `Aspire`, all logs will be shown in the console.
+
+#### How to investigate processing events from the Aspire?
+1. In the first, when the applications are started, each service will load all configurations of the `RabbitMQ` publishers and subscribers from the configuration file. And show them in the `OpenTelemetry`'s traces logs tab.
+   <img src="images/LoadedEventConfigurationsFromAspire.png" alt="Event configurations"/>
+   When you open on of the trace of the necessary service, and go to the `View structured logs` tab, you could see all loaded events' configurations.
+   <img src="images/EventConfigurationsFromAspire.png" alt="Event configurations"/>
+2. When an event is published or received, all kind of actions will be logged in the `OpenTelemetry`'s traces logs tab. You need to just filter the traces by `Messaging` type to see all related traces of publishing and receiving events.
+   <img src="images/PublishedAndReceivedEventsTraces.png" alt="Event traces"/>
+   You could find more detailed information about each published or received event including the event payload by opening the necessary trace.
+   <img src="images/RabbitMqEventPayload.png" alt="Event details"/>
