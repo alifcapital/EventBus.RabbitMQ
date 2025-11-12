@@ -61,7 +61,7 @@ public static class RabbitMqExtensions
             assemblies: assembliesToLoadEventForEventStore,
             options: eventStoreOptions,
             disposingInboxEventHandlerScope: eventSubscribersHandled,
-            executingReceivedEvents: eventsToSubscribe.ToArray());
+            executingInboxEvents: eventsToSubscribe.ToArray());
 
         var settings = configuration.GetSection(nameof(RabbitMqSettings)).Get<RabbitMqSettings>() ??
                        new RabbitMqSettings();
