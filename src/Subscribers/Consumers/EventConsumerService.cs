@@ -181,13 +181,17 @@ internal class EventConsumerService : IEventConsumerService
                     : Guid.NewGuid();
                 _logger.LogDebug("Received RabbitMQ event '{EventType}' (ID: {EventId})",
                     subscribersInformation.EventTypeName, eventId);
-                
-                headers.TryGetValue(EventBusInvestigationTagNames.EventNamingPolicyTypeTag, out var eventNamingPolicy);
-                var configuredNamingPolicy = subscribersInformation.Settings.PropertyNamingPolicy!.ToString();
-                if (!string.IsNullOrEmpty(eventNamingPolicy) && configuredNamingPolicy != eventNamingPolicy)
+
+                if (headers.TryGetValue(EventBusInvestigationTagNames.EventNamingPolicyTypeTag,
+                        out var eventNamingPolicy))
                 {
-                    var message = $"The naming policy type of received event '{eventType}' ({eventNamingPolicy}) is different from the configured naming policy type ({configuredNamingPolicy}). Deserialization issues may occur.";
-                    throw new EventBusException(message);
+                    var configuredNamingPolicy = subscribersInformation.Settings.PropertyNamingPolicy!.ToString();
+                    if (configuredNamingPolicy != eventNamingPolicy)
+                    {
+                        var message =
+                            $"The naming policy type of received event '{eventType}' ({eventNamingPolicy}) is different from the configured naming policy type ({configuredNamingPolicy}). Deserialization issues may occur.";
+                        throw new EventBusException(message);
+                    }
                 }
 
                 using var scope = _serviceProvider.CreateScope();
