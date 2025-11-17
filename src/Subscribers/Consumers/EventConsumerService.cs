@@ -181,6 +181,14 @@ internal class EventConsumerService : IEventConsumerService
                     : Guid.NewGuid();
                 _logger.LogDebug("Received RabbitMQ event '{EventType}' (ID: {EventId})",
                     subscribersInformation.EventTypeName, eventId);
+                
+                headers.TryGetValue(EventBusInvestigationTagNames.EventNamingPolicyTypeTag, out var eventNamingPolicy);
+                var configuredNamingPolicy = subscribersInformation.Settings.PropertyNamingPolicy!.ToString();
+                if (!string.IsNullOrEmpty(eventNamingPolicy) && configuredNamingPolicy != eventNamingPolicy)
+                {
+                    var message = $"The naming policy type of received event '{eventType}' ({eventNamingPolicy}) is different from the configured naming policy type ({configuredNamingPolicy}). Deserialization issues may occur.";
+                    throw new EventBusException(message);
+                }
 
                 using var scope = _serviceProvider.CreateScope();
                 if (_useInbox)
@@ -198,14 +206,15 @@ internal class EventConsumerService : IEventConsumerService
             }
             else
             {
-                _logger.LogWarning("No subscription for '{EventType}' event.", eventType);
+                _logger.LogWarning("No subscription for '{EventType}' RabbitMQ event.", eventType);
             }
         }
         catch (Exception ex)
         {
+            var innerMessage = ex is EventBusException ? ex.Message : null;
             _logger.LogError(ex,
-                "Error while receiving event '{EventType}' event with the '{RoutingKey}' routing key and '{EventId}' event id.",
-                eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId);
+                "Error while receiving '{EventType}' event with the '{RoutingKey}' routing key and '{EventId}' event id. {InnerMessage}",
+                eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId, innerMessage);
         }
 
         #region Helper methods
