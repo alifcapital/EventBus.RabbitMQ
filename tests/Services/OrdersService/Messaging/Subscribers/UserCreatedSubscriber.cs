@@ -2,7 +2,8 @@ using EventBus.RabbitMQ.Subscribers.Models;
 
 namespace OrdersService.Messaging.Subscribers;
 
-public class UserCreatedSubscriber1(ILogger<UserCreatedSubscriber1> logger) : IEventSubscriber<Events.Module1.UserCreated>
+public class UserCreatedSubscriber1(ILogger<UserCreatedSubscriber1> logger) : 
+    IEventSubscriber<Events.Module1.UserCreated>
 {
     public async Task HandleAsync(Events.Module1.UserCreated @event)
     {

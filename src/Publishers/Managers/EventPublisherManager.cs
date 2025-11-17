@@ -5,6 +5,7 @@ using System.Text.Json;
 using EventBus.RabbitMQ.Instrumentation;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Publishers.Models;
+using EventStorage.Instrumentation;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 
@@ -94,7 +95,10 @@ internal class EventPublisherManager(
             properties.MessageId = publishEvent.EventId.ToString();
             properties.Type = eventTypeName;
 
-            var headers = new Dictionary<string, object>();
+            var headers = new Dictionary<string, object>
+            {
+                { EventStorageInvestigationTagNames.EventNamingPolicyTypeTag, eventSettings.PropertyNamingPolicy?.ToString() }
+            };
             properties.Headers = headers;
             if (activity is not null)
                 headers.Add(EventBusTraceInstrumentation.TraceParentIdKey, activity.Id);

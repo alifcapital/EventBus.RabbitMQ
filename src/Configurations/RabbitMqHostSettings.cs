@@ -163,15 +163,15 @@ public class RabbitMqHostSettings
     private bool _isEventNamingPolicyInitialized;
     
     /// <summary>
-    /// Gets JsonNamingPolicy to use on naming police for serializing and deserializing the name of Event 
+    /// Gets JsonNamingPolicy to use on naming police for serializing and deserializing the name of Event.
     /// </summary>
     private JsonNamingPolicy GetEventNamingPolicy()
     {
         if (_isEventNamingPolicyInitialized)
             return _eventNamingPolicy;
 
-        var eventNamingPolicyType = EventNamingPolicy ?? NamingPolicyType.PascalCase;
-        _eventNamingPolicy = NamingPolicyTypeNames.GetEventNamingPolicy(eventNamingPolicyType.ToString());
+        var eventNamingPolicyType = EventNamingPolicy?.ToString();
+        _eventNamingPolicy = NamingPolicyTypeNames.GetEventNamingPolicy(eventNamingPolicyType);
         
         _isEventNamingPolicyInitialized = true;
 
