@@ -1,11 +1,14 @@
 using EventBus.RabbitMQ.Extensions;
 using EventStorage.Inbox.EventArgs;
+using Microsoft.EntityFrameworkCore;
+using OrdersService.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
+builder.Services.AddLogging(p => p.AddConsole());
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<OrderContext>(op => op.UseNpgsql(connectionString));
+
 builder.Services.AddRabbitMqEventBus(builder.Configuration,
     assemblies: [typeof(Program).Assembly],
     eventStoreOptions: options =>
@@ -22,6 +25,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+using var scope = app.Services.CreateScope();
+var context = scope.ServiceProvider.GetRequiredService<OrderContext>();
+context.Database.EnsureCreated();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

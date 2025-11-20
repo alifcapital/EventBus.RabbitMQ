@@ -2,6 +2,8 @@ using EventBus.RabbitMQ.Publishers.Managers;
 using EventStorage.Models;
 using EventStorage.Outbox.Managers;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using UsersService.Infrastructure;
 using UsersService.Messaging.Events.Publishers;
 using UsersService.Models;
 
@@ -9,46 +11,42 @@ namespace UsersService.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-public class UserController : ControllerBase
+public class UserController(
+    IEventPublisherManager eventPublisherManager,
+    IOutboxEventManager outboxEventManager,
+    UserContext userContext)
+    : ControllerBase
 {
-    private readonly IEventPublisherManager _eventPublisherManager;
-    private readonly IOutboxEventManager _outboxEventManager;
-
-    private static readonly Dictionary<Guid, User> Items = new();
-
-    public UserController(IEventPublisherManager eventPublisherManager,
-        IOutboxEventManager outboxEventManager)
-    {
-        _eventPublisherManager = eventPublisherManager;
-        _outboxEventManager = outboxEventManager;
-    }
-
     [HttpGet]
     public IActionResult GetItems()
     {
-        return Ok(Items.Values);
+        var users = userContext.Users.ToArray();
+        return Ok(users);
     }
 
     [HttpGet("{id:guid}")]
-    public IActionResult GetItems(Guid id)
+    public IActionResult GetById(Guid id)
     {
-        if (!Items.TryGetValue(id, out User item))
+        var user = userContext.Users.FirstOrDefault(u => u.Id == id);
+        if (user is null)
             return NotFound();
 
-        return Ok(item);
+        return Ok(user);
     }
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] User item)
     {
-        Items.Add(item.Id, item);
+        userContext.Users.Add(item);
 
         var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
 
         //await _eventPublisherManager.PublishAsync(userCreated);
         var test = new TestEvent { EventId = Guid.NewGuid() };
         //var sent = await _outboxEventManager.StoreAsync(test);
-        var successfullySent = await _outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker);
+        var successfullySent = await outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker);
+ 
+        await userContext.SaveChangesAsync();
 
         return Ok();
     }
@@ -56,28 +54,34 @@ public class UserController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromQuery] string newName)
     {
-        if (!Items.TryGetValue(id, out User item))
+        var user = userContext.Users.AsTracking().FirstOrDefault(u => u.Id == id);
+        if (user is null)
             return NotFound();
 
-        var userUpdated = new UserUpdated { UserId = item.Id, OldUserName = item.Name, NewUserName = newName };
+        var userUpdated = new UserUpdated { UserId = user.Id, OldUserName = user.Name, NewUserName = newName };
         userUpdated.Headers = new();
         userUpdated.Headers.TryAdd("TraceId", HttpContext.TraceIdentifier);
-        await _eventPublisherManager.PublishAsync(userUpdated);
+        await eventPublisherManager.PublishAsync(userUpdated);
 
-        item.Name = newName;
-        return Ok(item);
+        user.Name = newName;
+        await userContext.SaveChangesAsync();
+        
+        return Ok(user);
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        if (!Items.TryGetValue(id, out User item))
+        var user = userContext.Users.FirstOrDefault(u => u.Id == id);
+        if (user is null)
             return NotFound();
 
-        var userDeleted = new UserDeleted { UserId = item.Id, UserName = item.Name };
-        var successfullySent = await _outboxEventManager.StoreAsync(userDeleted, EventProviderType.MessageBroker);
+        var userDeleted = new UserDeleted { UserId = user.Id, UserName = user.Name };
+        var successfullySent = await outboxEventManager.StoreAsync(userDeleted, EventProviderType.MessageBroker);
 
-        Items.Remove(id);
-        return Ok(item);
+        userContext.Users.Remove(user);
+        await userContext.SaveChangesAsync();
+        
+        return Ok(user);
     }
 }
