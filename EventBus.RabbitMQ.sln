@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrdersService", "tests\Serv
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBus.RabbitMQ.Tests", "tests\EventBus.RabbitMQ.Tests\EventBus.RabbitMQ.Tests.csproj", "{7DF5D568-8DFE-49F6-A368-8226D5A97533}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeliveryService", "tests\Services\DeliveryService\DeliveryService.csproj", "{91E6773C-0F93-42B0-B532-B5112FD3488B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -47,6 +49,10 @@ Global
 		{7DF5D568-8DFE-49F6-A368-8226D5A97533}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7DF5D568-8DFE-49F6-A368-8226D5A97533}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7DF5D568-8DFE-49F6-A368-8226D5A97533}.Release|Any CPU.Build.0 = Release|Any CPU
+		{91E6773C-0F93-42B0-B532-B5112FD3488B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{91E6773C-0F93-42B0-B532-B5112FD3488B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{91E6773C-0F93-42B0-B532-B5112FD3488B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{91E6773C-0F93-42B0-B532-B5112FD3488B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -56,5 +62,6 @@ Global
 		{6B1941E8-84D8-4F87-B2DB-CF65822DC6AC} = {6BD5AA8E-D344-4DC4-A28C-FC2AC8452494}
 		{A665345B-F16A-494E-B7AE-21A76B4AB18E} = {6BD5AA8E-D344-4DC4-A28C-FC2AC8452494}
 		{7DF5D568-8DFE-49F6-A368-8226D5A97533} = {5BBC5F2C-37A0-4220-94B2-3E6D17E81F6F}
+		{91E6773C-0F93-42B0-B532-B5112FD3488B} = {6BD5AA8E-D344-4DC4-A28C-FC2AC8452494}
 	EndGlobalSection
 EndGlobal
