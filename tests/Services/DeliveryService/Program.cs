@@ -1,6 +1,7 @@
 using DeliveryService.Infrastructure;
 using EventBus.RabbitMQ.Extensions;
 using EventStorage.Inbox.EventArgs;
+using InMemoryMessaging.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,6 +10,7 @@ builder.Services.AddLogging(p => p.AddConsole());
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<DeliveryContext>(op => op.UseNpgsql(connectionString));
 
+builder.Services.AddInMemoryMessaging([typeof(Program).Assembly]);
 builder.Services.AddRabbitMqEventBus(builder.Configuration,
     assemblies: [typeof(Program).Assembly],
     eventStoreOptions: options =>

@@ -2,7 +2,7 @@
 
 public enum OrderStatus
 {
-    None,
+    Submitted,
     ProcessingPayment,
     Delivering,
     Completed,

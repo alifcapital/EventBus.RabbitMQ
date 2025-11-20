@@ -1,4 +1,5 @@
 using EventBus.RabbitMQ.Extensions;
+using InMemoryMessaging.Extensions;
 using Microsoft.EntityFrameworkCore;
 using UsersService.Infrastructure;
 using UsersService.Repositories;
@@ -11,6 +12,8 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<UserContext>(op => op.UseNpgsql(connectionString));
 
 // Add services to the container.
+
+builder.Services.AddInMemoryMessaging([typeof(Program).Assembly]);
 builder.Services.AddRabbitMqEventBus(builder.Configuration,
     assemblies: [typeof(Program).Assembly],
     defaultOptions: options =>

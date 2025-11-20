@@ -1,7 +1,7 @@
-using EventBus.RabbitMQ.Publishers.Managers;
-using EventStorage.Models;
+using InMemoryMessaging.Managers;
 using Microsoft.AspNetCore.Mvc;
 using OrdersService.Infrastructure;
+using OrdersService.Messaging.Events.Publishers;
 using OrdersService.Models;
 
 namespace OrdersService.Controllers;
@@ -9,11 +9,10 @@ namespace OrdersService.Controllers;
 [ApiController]
 [Route("[controller]")]
 public class OrderController(
-    IEventPublisherManager eventPublisherManager,
+    IMessageManager messageManager,
     OrderContext orderContext)
     : ControllerBase
 {
-    
     [HttpGet]
     public IActionResult GetItems()
     {
@@ -36,9 +35,13 @@ public class OrderController(
     {
         orderContext.Orders.Add(item);
 
-        // var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
-        //
-        // var successfullySent = await outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker);
+        var orderSubmitted = new OrderSubmitted
+        {
+            OrderId = item.Id,
+            TotalPrice = item.TotalPrice,
+            CustomerEmail = item.CustomerEmail
+        };
+        await messageManager.PublishAsync(orderSubmitted);
 
         await orderContext.SaveChangesAsync();
 

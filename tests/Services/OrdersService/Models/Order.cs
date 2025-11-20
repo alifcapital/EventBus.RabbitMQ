@@ -19,7 +19,7 @@ public class Order
 
     public string CustomerEmail { get; init; } = "alif@alif.tj";
     
-    public OrderStatus Status { get; set; } = OrderStatus.None;
+    public OrderStatus Status { get; set; } = OrderStatus.Submitted;
     
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 }

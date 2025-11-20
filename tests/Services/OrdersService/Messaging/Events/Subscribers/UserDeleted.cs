@@ -1,6 +1,6 @@
 ﻿using EventBus.RabbitMQ.Subscribers.Models;
 
-namespace OrdersService.Messaging.Events;
+namespace OrdersService.Messaging.Events.Subscribers;
 
 public record UserDeleted : SubscribeEvent
 {
