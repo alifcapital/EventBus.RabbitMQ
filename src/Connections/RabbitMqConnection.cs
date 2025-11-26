@@ -11,7 +11,7 @@ using RabbitMQ.Client.Exceptions;
 
 namespace EventBus.RabbitMQ.Connections;
 
-internal sealed class RabbitMqConnection : IRabbitMqConnection
+internal class RabbitMqConnection : IRabbitMqConnection
 {
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
 
@@ -31,43 +31,45 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
     private readonly Lock _lockOpenConnection = new();
 
-    public bool TryConnect()
+    public void Connect()
     {
         lock (_lockOpenConnection)
         {
-            if (IsConnected) return true;
+            if (IsConnected) return;
 
-            _logger.LogDebug(
-                "RabbitMQ Client is trying to connect to the {VirtualHost} virtual host of {HostName} RabbitMQ host",
-                _connectionOptions.VirtualHost, _connectionOptions.HostName);
-
-            var policy = Policy.Handle<SocketException>()
-                .Or<BrokerUnreachableException>()
-                .WaitAndRetry(_connectionOptions.RetryConnectionCount,
-                    retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))
-                );
-
-            var applicationName = AppDomain.CurrentDomain.FriendlyName;
-            var connectionDisplayName =
-                $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
-            policy.Execute(() =>
+            try
             {
-                _connection = _connectionFactory.CreateConnection(connectionDisplayName);
-            });
+                _logger.LogDebug(
+                    "RabbitMQ Client is trying to connect to the '{VirtualHost} 'virtual host of '{HostName}' RabbitMQ host",
+                    _connectionOptions.VirtualHost, _connectionOptions.HostName);
 
-            if (IsConnected)
-            {
-                _connection!.ConnectionShutdown += OnConnectionShutdown;
-                _connection!.CallbackException += OnCallbackException;
-                _connection!.ConnectionBlocked += OnConnectionBlocked;
+                var policy = Policy.Handle<SocketException>()
+                    .Or<BrokerUnreachableException>()
+                    .WaitAndRetry(_connectionOptions.RetryConnectionCount,
+                        retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))
+                    );
 
-                _logger.LogInformation(
-                    "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
-                    _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
+                var applicationName = AppDomain.CurrentDomain.FriendlyName;
+                var connectionDisplayName =
+                    $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
+                policy.Execute(() => { _connection = _connectionFactory.CreateConnection(connectionDisplayName); });
 
-                return true;
+                if (IsConnected)
+                {
+                    _connection!.ConnectionShutdown += OnConnectionShutdown;
+                    _connection!.CallbackException += OnCallbackException;
+                    _connection!.ConnectionBlocked += OnConnectionBlocked;
+
+                    _logger.LogInformation(
+                        "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
+                        _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
+                }
             }
-            return false;
+            catch (IOException e)
+            {
+                throw new EventBusException(e,
+                    $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
+            }
         }
     }
 
@@ -79,18 +81,18 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     {
         try
         {
-            TryConnect();
+            Connect();
 
             if (!IsConnected)
                 throw new EventBusException(
-                    $"RabbitMQ connection is not opened yet to the {_connectionOptions.VirtualHost} virtual host of {_connectionOptions.HostName}.");
+                    $"RabbitMQ connection is not opened yet to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
 
             return _connection.CreateModel();
         }
         catch (IOException e)
         {
             throw new EventBusException(e,
-                $"Error while creating the channel to the {_connectionOptions.VirtualHost} virtual host of {_connectionOptions.HostName}.");
+                $"Error while creating a channel to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
         }
     }
 
@@ -110,7 +112,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
-            TryConnect();
+            Connect();
         }
     }
 
@@ -124,7 +126,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
-            TryConnect();
+            Connect();
         }
     }
 
@@ -138,7 +140,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
-            TryConnect();
+            Connect();
         }
     }
 
