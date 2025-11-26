@@ -131,15 +131,8 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     /// </exception>
     public IModel CreateRabbitMqChannel(EventPublisherOptions settings)
     {
-        try
-        {
-            var connection = _rabbitMqConnectionManager.GetOrCreateConnection(settings.VirtualHostSettings);
-            return connection.CreateChannel();
-        }
-        catch (IOException ex)
-        {
-            throw new EventBusException(ex, "Error while opening the RabbitMQ connection or creating the channel.");
-        }
+        var connection = _rabbitMqConnectionManager.GetOrCreateConnection(settings.VirtualHostSettings);
+        return connection.CreateChannel();
     }
 
     #endregion

@@ -41,12 +41,20 @@ internal class EventConsumerService : IEventConsumerService
     public EventConsumerService(EventSubscriberOptions connectionOptions, IServiceProvider serviceProvider,
         bool useInbox)
     {
-        _connectionOptions = connectionOptions;
-        _serviceProvider = serviceProvider;
-        _logger = _serviceProvider.GetRequiredService<ILogger<EventConsumerService>>();
-        var rabbitMqConnectionCreator = serviceProvider.GetRequiredService<IRabbitMqConnectionManager>();
-        _connection = rabbitMqConnectionCreator.GetOrCreateConnection(connectionOptions.VirtualHostSettings);
-        _useInbox = useInbox;
+        try
+        {
+            _connectionOptions = connectionOptions;
+            _serviceProvider = serviceProvider;
+            _logger = _serviceProvider.GetRequiredService<ILogger<EventConsumerService>>();
+            var rabbitMqConnectionCreator = serviceProvider.GetRequiredService<IRabbitMqConnectionManager>();
+            _connection = rabbitMqConnectionCreator.GetOrCreateConnection(connectionOptions.VirtualHostSettings);
+            _useInbox = useInbox;
+        }
+        catch (Exception e)
+        {
+            throw new EventBusException(e,
+                $"Error while creating RabbitMQ event consumer service for '{connectionOptions.QueueName}' queue of '{connectionOptions.VirtualHostSettings.VirtualHost}' virtual host.");
+        }
     }
 
     public void AddSubscriber(SubscribersInformation eventInfo)
@@ -63,10 +71,18 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     public void CreateChannelAndSubscribeReceiver()
     {
-        _consumerChannel = CreateConsumerChannel();
-        var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
-        consumer.Received += Consumer_ReceivingEvent;
-        _consumerChannel.BasicConsume(queue: _connectionOptions.QueueName, autoAck: false, consumer: consumer);
+        try
+        {
+            _consumerChannel = CreateConsumerChannel();
+            var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
+            consumer.Received += Consumer_ReceivingEvent;
+            _consumerChannel.BasicConsume(queue: _connectionOptions.QueueName, autoAck: false, consumer: consumer);
+        }
+        catch (IOException e)
+        {
+            throw new EventBusException(e,
+                $"Error while creating RabbitMQ consumer channel for '{_connectionOptions.QueueName}' queue of '{_connectionOptions.VirtualHostSettings.VirtualHost}' virtual host.");
+        }
     }
 
     /// <summary>
@@ -111,10 +127,20 @@ internal class EventConsumerService : IEventConsumerService
         {
             _logger.LogWarning(e.Exception, "Recreating RabbitMQ consumer channel after exception");
 
-            _consumerChannel.CallbackException -= OnCallbackException;
-            _consumerChannel.Dispose();
+            try
+            {
+                _consumerChannel.CallbackException -= OnCallbackException;
+                _consumerChannel.Dispose();
 
-            CreateChannelAndSubscribeReceiver();
+                CreateChannelAndSubscribeReceiver();
+            }
+            catch (Exception ex)
+            {
+                var message =
+                    $"Error while recreating RabbitMQ consumer channel for '{_connectionOptions.QueueName}' queue of '{_connectionOptions.VirtualHostSettings.VirtualHost}' virtual host after exception";
+                _logger.LogError(ex, message);
+                throw new EventBusException(ex, message);
+            }
         }
     }
 
@@ -301,6 +327,15 @@ internal class EventConsumerService : IEventConsumerService
         }
 
         #endregion
+    }
+
+    #endregion
+
+    #region GetEventSubscriberSettings
+
+    public EventSubscriberOptions GetEventSubscriberSettings()
+    {
+        return _connectionOptions;
     }
 
     #endregion

@@ -11,7 +11,7 @@ using RabbitMQ.Client.Exceptions;
 
 namespace EventBus.RabbitMQ.Connections;
 
-internal sealed class RabbitMqConnection : IRabbitMqConnection
+internal class RabbitMqConnection : IRabbitMqConnection
 {
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
 
@@ -31,51 +31,45 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
     private readonly Lock _lockOpenConnection = new();
 
-    public bool TryConnect()
+    public void Connect()
     {
         lock (_lockOpenConnection)
         {
-            if (IsConnected) return true;
+            if (IsConnected) return;
 
-            _logger.LogDebug(
-                "RabbitMQ Client is trying to connect to the {VirtualHost} virtual host of {HostName} RabbitMQ host",
-                _connectionOptions.VirtualHost, _connectionOptions.HostName);
-
-            var policy = Policy.Handle<SocketException>()
-                .Or<BrokerUnreachableException>()
-                .WaitAndRetry(_connectionOptions.RetryConnectionCount,
-                    retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                    (ex, time) =>
-                    {
-                        _logger.LogWarning(ex,
-                            "RabbitMQ client could not connect to the {VirtualHost} virtual host of {HostName} RabbitMQ host after {TimeOut}s ({ExceptionMessage})",
-                            _connectionOptions.VirtualHost, _connectionOptions.HostName, $"{time.TotalSeconds:n1}",
-                            ex.Message);
-                    }
-                );
-
-            var applicationName = AppDomain.CurrentDomain.FriendlyName;
-            var connectionDisplayName =
-                $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
-            policy.Execute(() => { _connection = _connectionFactory.CreateConnection(connectionDisplayName); });
-
-            if (IsConnected)
+            try
             {
-                _connection!.ConnectionShutdown += OnConnectionShutdown;
-                _connection!.CallbackException += OnCallbackException;
-                _connection!.ConnectionBlocked += OnConnectionBlocked;
+                _logger.LogDebug(
+                    "RabbitMQ Client is trying to connect to the '{VirtualHost} 'virtual host of '{HostName}' RabbitMQ host",
+                    _connectionOptions.VirtualHost, _connectionOptions.HostName);
 
-                _logger.LogInformation(
-                    "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
-                    _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
+                var policy = Policy.Handle<SocketException>()
+                    .Or<BrokerUnreachableException>()
+                    .WaitAndRetry(_connectionOptions.RetryConnectionCount,
+                        retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))
+                    );
 
-                return true;
+                var applicationName = AppDomain.CurrentDomain.FriendlyName;
+                var connectionDisplayName =
+                    $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
+                policy.Execute(() => { _connection = _connectionFactory.CreateConnection(connectionDisplayName); });
+
+                if (IsConnected)
+                {
+                    _connection!.ConnectionShutdown += OnConnectionShutdown;
+                    _connection!.CallbackException += OnCallbackException;
+                    _connection!.ConnectionBlocked += OnConnectionBlocked;
+
+                    _logger.LogInformation(
+                        "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
+                        _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
+                }
             }
-
-            _logger.LogCritical(
-                "Connection to the {VirtualHost} virtual host of {HostName} RabbitMQ host could not be opened",
-                _connectionOptions.VirtualHost, _connectionOptions.HostName);
-            return false;
+            catch (IOException e)
+            {
+                throw new EventBusException(e,
+                    $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
+            }
         }
     }
 
@@ -85,13 +79,21 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
 
     public IModel CreateChannel()
     {
-        TryConnect();
+        try
+        {
+            Connect();
 
-        if (!IsConnected)
-            throw new EventBusException(
-                $"RabbitMQ connection is not opened yet to the {_connectionOptions.VirtualHost} virtual host of {_connectionOptions.HostName}.");
+            if (!IsConnected)
+                throw new EventBusException(
+                    $"RabbitMQ connection is not opened yet to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
 
-        return _connection.CreateModel();
+            return _connection.CreateModel();
+        }
+        catch (IOException e)
+        {
+            throw new EventBusException(e,
+                $"Error while creating a channel to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
+        }
     }
 
     #endregion
@@ -110,7 +112,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
-            TryConnect();
+            Connect();
         }
     }
 
@@ -124,7 +126,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
-            TryConnect();
+            Connect();
         }
     }
 
@@ -138,7 +140,7 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
-            TryConnect();
+            Connect();
         }
     }
 
@@ -153,43 +155,51 @@ internal sealed class RabbitMqConnection : IRabbitMqConnection
     /// <returns>A configured instance of <see cref="ConnectionFactory"/>.</returns>
     private ConnectionFactory CreateConnectionFactory()
     {
-        var connectionFactory = new ConnectionFactory
+        try
         {
-            HostName = _connectionOptions.HostName,
-            Port = _connectionOptions.HostPort!.Value,
-            VirtualHost = _connectionOptions.VirtualHost,
-            UserName = _connectionOptions.UserName,
-            Password = _connectionOptions.Password,
-            DispatchConsumersAsync = true
-        };
+            var connectionFactory = new ConnectionFactory
+            {
+                HostName = _connectionOptions.HostName,
+                Port = _connectionOptions.HostPort!.Value,
+                VirtualHost = _connectionOptions.VirtualHost,
+                UserName = _connectionOptions.UserName,
+                Password = _connectionOptions.Password,
+                DispatchConsumersAsync = true
+            };
 
-        if (_connectionOptions.UseTls != true) return connectionFactory;
+            if (_connectionOptions.UseTls != true) return connectionFactory;
 
-        if (string.IsNullOrEmpty(_connectionOptions.ClientCertPath))
-            _logger.LogError(
-                "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientCertPath is not set.",
-                _connectionOptions.VirtualHost, _connectionOptions.HostName);
+            if (string.IsNullOrEmpty(_connectionOptions.ClientCertPath))
+                _logger.LogError(
+                    "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientCertPath is not set.",
+                    _connectionOptions.VirtualHost, _connectionOptions.HostName);
 
-        if (string.IsNullOrEmpty(_connectionOptions.ClientKeyPath))
-            _logger.LogError(
-                "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientKeyPath is not set.",
-                _connectionOptions.VirtualHost, _connectionOptions.HostName);
+            if (string.IsNullOrEmpty(_connectionOptions.ClientKeyPath))
+                _logger.LogError(
+                    "Using the UseTls (TLS protocol) is enabled for the {VirtualHost} virtual host of {HostName} host, but the ClientKeyPath is not set.",
+                    _connectionOptions.VirtualHost, _connectionOptions.HostName);
 
-        var clientCertFullPath = GetFullPath(_connectionOptions.ClientCertPath);
-        var clientKeyFullPath = GetFullPath(_connectionOptions.ClientKeyPath);
-        connectionFactory.Ssl = new SslOption
+            var clientCertFullPath = GetFullPath(_connectionOptions.ClientCertPath);
+            var clientKeyFullPath = GetFullPath(_connectionOptions.ClientKeyPath);
+            connectionFactory.Ssl = new SslOption
+            {
+                Enabled = true,
+                ServerName = _connectionOptions.HostName,
+                CertificateValidationCallback = (_, _, _, _) => true,
+                Version = _connectionOptions.SslProtocolVersion!.Value,
+                Certs =
+                [
+                    X509Certificate2.CreateFromPemFile(clientCertFullPath, clientKeyFullPath)
+                ]
+            };
+
+            return connectionFactory;
+        }
+        catch (Exception e)
         {
-            Enabled = true,
-            ServerName = _connectionOptions.HostName,
-            CertificateValidationCallback = (_, _, _, _) => true,
-            Version = _connectionOptions.SslProtocolVersion!.Value,
-            Certs =
-            [
-                X509Certificate2.CreateFromPemFile(clientCertFullPath, clientKeyFullPath)
-            ]
-        };
-
-        return connectionFactory;
+            throw new EventBusException(e,
+                $"Error while creating the RabbitMQ connection factory for the {_connectionOptions.VirtualHost} virtual host of {_connectionOptions.HostName}.");
+        }
     }
 
     /// <summary>

@@ -93,6 +93,17 @@ public class EventConsumerServiceTests : BaseTestEntity
     }
 
     #endregion
+
+    #region GetEventSubscriberSettings
+
+    [Test]
+    public void GetEventSubscriberSettings_GettingSettings_ShouldReturnConfiguredDefaultSettings()
+    {
+        var consumerSettings = _consumerService.GetEventSubscriberSettings();
+        Assert.That(consumerSettings, Is.EqualTo(_settings));
+    }
+
+    #endregion
     
     #region Helper methods
 

@@ -5,6 +5,7 @@ using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Subscribers;
@@ -21,6 +22,8 @@ public class EventSubscriberCollectorTests : BaseTestEntity
     {
         var settings = RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions();
         _serviceProvider = Substitute.For<IServiceProvider>();
+        var logger = Substitute.For<ILogger<EventSubscriberCollector>>();
+        _serviceProvider.GetService(typeof(ILogger<EventSubscriberCollector>)).Returns(logger);
         _subscriberCollector = new EventSubscriberCollector(settings, _serviceProvider);
     }
 

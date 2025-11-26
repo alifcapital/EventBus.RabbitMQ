@@ -11,7 +11,9 @@ using Microsoft.Extensions.Logging;
 
 namespace EventBus.RabbitMQ.Subscribers.Managers;
 
-internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServiceProvider serviceProvider)
+internal class EventSubscriberCollector(
+    RabbitMqOptions defaultSettings,
+    IServiceProvider serviceProvider)
     : IEventSubscriberCollector
 {
     /// <summary>
@@ -30,8 +32,14 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
     /// </summary>
     private readonly Dictionary<string, IEventConsumerService> _eventConsumers = new();
 
+    /// <summary>
+    /// The logger instance for logging
+    /// </summary>
+    private readonly ILogger<IEventSubscriberCollector> _logger =
+        serviceProvider.GetRequiredService<ILogger<EventSubscriberCollector>>();
+
     #region AddSubscriber
-    
+
     public void AddSubscriber<TEvent, TEventHandler>(Action<EventSubscriberOptions> options = null)
         where TEvent : class, ISubscribeEvent
         where TEventHandler : class, IEventSubscriber<TEvent>
@@ -47,7 +55,7 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
             };
             Subscribers.Add(eventType.Name, subscribersInformation);
         }
-        
+
         options?.Invoke(subscribersInformation.Settings);
         subscribersInformation.AddSubscriberIfNotExists(eventType, handlerType);
     }
@@ -73,12 +81,12 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
             };
             Subscribers.Add(typeOfSubscriber.Name, subscribersInformation);
         }
-        
+
         subscribersInformation.AddSubscriberIfNotExists(typeOfSubscriber, typeOfHandler);
     }
-    
+
     #endregion
-    
+
     #region SetVirtualHostAndOwnSettingsOfSubscribers
 
     /// <summary>
@@ -95,41 +103,50 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
             eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, eventTypeName);
         }
     }
-    
+
     #endregion
-    
+
     #region CreateConsumerForEachQueueAndStartReceivingEvents
 
     public void CreateConsumerForEachQueueAndStartReceivingEvents()
     {
-        var eventConsumerCreator = serviceProvider.GetRequiredService<IEventConsumerServiceCreator>();
-        foreach (var (_, eventInfo) in Subscribers)
+        try
         {
-            var consumerId =
-                $"{eventInfo.Settings.VirtualHostSettings.VirtualHost}-{eventInfo.Settings.QueueName}";
-            if (!_eventConsumers.TryGetValue(consumerId, value: out var eventConsumer))
+            var eventConsumerCreator = serviceProvider.GetRequiredService<IEventConsumerServiceCreator>();
+            foreach (var (_, eventInfo) in Subscribers)
             {
-                eventConsumer =
-                    eventConsumerCreator.Create(eventInfo.Settings, serviceProvider, defaultSettings.UseInbox);
-                _eventConsumers.Add(consumerId, eventConsumer);
+                var consumerId =
+                    $"{eventInfo.Settings.VirtualHostSettings.VirtualHost}-{eventInfo.Settings.QueueName}";
+                if (!_eventConsumers.TryGetValue(consumerId, value: out var eventConsumer))
+                {
+                    eventConsumer =
+                        eventConsumerCreator.Create(eventInfo.Settings, serviceProvider, defaultSettings.UseInbox);
+                    _eventConsumers.Add(consumerId, eventConsumer);
+                }
+
+                eventConsumer.AddSubscriber(eventInfo);
             }
 
-            eventConsumer.AddSubscriber(eventInfo);
+            foreach (var (_, consumer) in _eventConsumers)
+            {
+                try
+                {
+                    consumer.CreateChannelAndSubscribeReceiver();
+                }
+                catch (Exception e)
+                {
+                    var consumerSettings = consumer.GetEventSubscriberSettings();
+                    _logger.LogError(e, "Error while creating a channel or subscribing a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host.",
+                        consumerSettings.QueueName, consumerSettings.VirtualHostSettings.VirtualHost);
+                }
+            }
         }
-
-        foreach (var consumer in _eventConsumers)
+        catch (Exception e)
         {
-            try
-            {
-                consumer.Value.CreateChannelAndSubscribeReceiver();
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-            }
+            _logger.LogError(e, "Error while creating consumers for each queue and start receiving events.");
         }
     }
-    
+
     #endregion
 
     #region On exceuting subscribed event
@@ -171,22 +188,21 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
     }
 
     #endregion
-    
+
     #region PrintLoadedSubscribersInformation
-    
+
     public void PrintLoadedSubscribersInformation()
     {
-        var logger = serviceProvider.GetRequiredService<ILogger<IEventSubscriberCollector>>();
         var loadedSubscribersCount = Subscribers.Count;
         using var activity = EventBusTraceInstrumentation.StartActivity(
             $"MQ: Total {loadedSubscribersCount} subscribers are loaded.", ActivityKind.Server);
-        logger.LogInformation("Total {loadedSubscribersCount} subscribers are loaded.", loadedSubscribersCount);
-        
+        _logger.LogInformation("Total {loadedSubscribersCount} subscribers are loaded.", loadedSubscribersCount);
+
         foreach (var (eventName, subscribersInformation) in Subscribers)
         {
             var eventSettings = subscribersInformation.Settings;
             var subscriberHandlersCount = subscribersInformation.Subscribers.Count;
-            logger.LogDebug(
+            _logger.LogDebug(
                 "Loaded subscriber: EventName='{EventName}', VirtualHost='{VirtualHost}', ExchangeName='{ExchangeName}', ExchangeType='{ExchangeType}', RoutingKey='{RoutingKey}', PropertyNamingPolicy='{PropertyNamingPolicy}', QueueName='{QueueName}', HandlersCount='{HandlersCount}'",
                 eventName,
                 eventSettings.VirtualHostSettings.VirtualHost,
@@ -198,10 +214,9 @@ internal class EventSubscriberCollector(RabbitMqOptions defaultSettings, IServic
                 subscriberHandlersCount);
 
             if (subscriberHandlersCount == 0)
-                logger.LogWarning("No subscriber handlers are loaded for the event '{EventName}'", eventName);
+                _logger.LogWarning("No subscriber handlers are loaded for the event '{EventName}'", eventName);
         }
-        
     }
-    
+
     #endregion
 }
