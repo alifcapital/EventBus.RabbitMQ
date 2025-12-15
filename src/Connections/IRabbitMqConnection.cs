@@ -21,5 +21,5 @@ internal interface IRabbitMqConnection : IDisposable
     /// </summary>
     /// <throws cref="EventBusException">Throws <see cref="EventBusException"/> when connection cannot be opened or create model.</throws>
     /// <returns>Returns created model</returns>
-    IModel CreateChannel();
+    IChannel CreateChannel();
 }

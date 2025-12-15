@@ -34,7 +34,7 @@ internal interface IEventPublisherCollector
     /// </summary>
     /// <param name="settings">Publisher setting to open connection</param>
     /// <returns>Newly created RabbitMQ channel</returns>
-    public IModel CreateRabbitMqChannel(EventPublisherOptions settings);
+    public IChannel CreateRabbitMqChannel(EventPublisherOptions settings);
 
     /// <summary>
     /// Creating an exchange for each registered publisher and 

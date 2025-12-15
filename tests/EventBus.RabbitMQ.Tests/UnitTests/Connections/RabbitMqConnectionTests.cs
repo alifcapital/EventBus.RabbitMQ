@@ -3,6 +3,7 @@ using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Connections;
 
@@ -21,7 +22,13 @@ public class RabbitMqConnectionTests : BaseTestEntity
         var serviceProvider = Substitute.For<IServiceProvider>();
         var logger = Substitute.For<ILogger<RabbitMqConnection>>();
         serviceProvider.GetService(typeof(ILogger<RabbitMqConnection>)).Returns(logger);
-        _connection = Substitute.ForPartsOf<RabbitMqConnection>(_connectionOptions, serviceProvider);
+
+        var connectionFactory = Substitute.For<IConnectionFactory>();
+        connectionFactory
+            .CreateConnectionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IConnection>(new Exception("Connection failed.")));
+
+        _connection = new RabbitMqConnection(_connectionOptions, serviceProvider, connectionFactory);
     }
 
     [TearDown]

@@ -20,11 +20,12 @@ internal class RabbitMqConnection : IRabbitMqConnection
     private readonly ILogger<RabbitMqConnection> _logger;
     private IConnection _connection;
 
-    public RabbitMqConnection(RabbitMqHostSettings virtualHostSettings, IServiceProvider serviceProvider)
+    public RabbitMqConnection(RabbitMqHostSettings virtualHostSettings, IServiceProvider serviceProvider,
+        IConnectionFactory connectionFactory = null)
     {
         _connectionOptions = virtualHostSettings;
         _logger = serviceProvider.GetRequiredService<ILogger<RabbitMqConnection>>();
-        _connectionFactory = CreateConnectionFactory();
+        _connectionFactory = connectionFactory ?? CreateConnectionFactory();
     }
 
     #region TryConnect
@@ -52,20 +53,25 @@ internal class RabbitMqConnection : IRabbitMqConnection
                 var applicationName = AppDomain.CurrentDomain.FriendlyName;
                 var connectionDisplayName =
                     $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
-                policy.Execute(() => { _connection = _connectionFactory.CreateConnection(connectionDisplayName); });
+                policy.Execute(() =>
+                {
+                    _connection = _connectionFactory
+                        .CreateConnectionAsync(connectionDisplayName, CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                });
 
                 if (IsConnected)
                 {
-                    _connection!.ConnectionShutdown += OnConnectionShutdown;
-                    _connection!.CallbackException += OnCallbackException;
-                    _connection!.ConnectionBlocked += OnConnectionBlocked;
+                    _connection!.ConnectionShutdownAsync += OnConnectionShutdownAsync;
+                    _connection!.CallbackExceptionAsync += OnCallbackExceptionAsync;
+                    _connection!.ConnectionBlockedAsync += OnConnectionBlockedAsync;
 
                     _logger.LogInformation(
                         "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
                         _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
                 }
             }
-            catch (IOException e)
+            catch (Exception e)
             {
                 throw new EventBusException(e,
                     $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
@@ -77,7 +83,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
     #region Create channel
 
-    public IModel CreateChannel()
+    public IChannel CreateChannel()
     {
         try
         {
@@ -87,13 +93,15 @@ internal class RabbitMqConnection : IRabbitMqConnection
                 throw new EventBusException(
                     $"RabbitMQ connection is not opened yet to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
 
-            return _connection.CreateModel();
+            return _connection
+                .CreateChannelAsync(new CreateChannelOptions(false, false, null, null), CancellationToken.None)
+                .GetAwaiter().GetResult();
         }
         catch (IOException e)
         {
             throw new EventBusException(e,
                 $"Error while creating a channel to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
-        }
+        }   
     }
 
     #endregion
@@ -105,43 +113,49 @@ internal class RabbitMqConnection : IRabbitMqConnection
     /// <summary>
     /// The event handler for reconnecting when the connection is blocked
     /// </summary>
-    private void OnConnectionBlocked(object sender, ConnectionBlockedEventArgs e)
+    private Task OnConnectionBlockedAsync(object sender, ConnectionBlockedEventArgs e)
     {
-        if (_disposed) return;
+        if (_disposed) return Task.CompletedTask;
 
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
             Connect();
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
     /// The event handler for reconnecting when an exception is thrown
     /// </summary>
-    private void OnCallbackException(object sender, CallbackExceptionEventArgs e)
+    private Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
-        if (_disposed) return;
+        if (_disposed) return Task.CompletedTask;
 
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
             Connect();
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
     /// The event handler for reconnecting when the connection is shutdown
     /// </summary>
-    private void OnConnectionShutdown(object sender, ShutdownEventArgs reason)
+    private Task OnConnectionShutdownAsync(object sender, ShutdownEventArgs reason)
     {
-        if (_disposed) return;
+        if (_disposed) return Task.CompletedTask;
 
         lock (_lockReOpenConnection)
         {
             DisposeConnectionIfExists();
             Connect();
         }
+
+        return Task.CompletedTask;
     }
 
     #endregion
@@ -163,8 +177,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
                 Port = _connectionOptions.HostPort!.Value,
                 VirtualHost = _connectionOptions.VirtualHost,
                 UserName = _connectionOptions.UserName,
-                Password = _connectionOptions.Password,
-                DispatchConsumersAsync = true
+                Password = _connectionOptions.Password
             };
 
             if (_connectionOptions.UseTls != true) return connectionFactory;
@@ -229,9 +242,9 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
         try
         {
-            _connection.ConnectionShutdown -= OnConnectionShutdown;
-            _connection.CallbackException -= OnCallbackException;
-            _connection.ConnectionBlocked -= OnConnectionBlocked;
+            _connection.ConnectionShutdownAsync -= OnConnectionShutdownAsync;
+            _connection.CallbackExceptionAsync -= OnCallbackExceptionAsync;
+            _connection.ConnectionBlockedAsync -= OnConnectionBlockedAsync;
 
             _connection.Dispose();
         }

@@ -87,7 +87,7 @@ public class EventConsumerServiceTests : BaseTestEntity
             .GetField("_consumerChannel", BindingFlags.NonPublic | BindingFlags.Instance);
         
         Assert.That(field, Is.Not.Null);
-        var consumerChannel = field?.GetValue(_consumerService) as IModel;
+        var consumerChannel = field?.GetValue(_consumerService) as IChannel;
         _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(_settings.VirtualHostSettings);
         Assert.That(consumerChannel, Is.Not.Null);
     }

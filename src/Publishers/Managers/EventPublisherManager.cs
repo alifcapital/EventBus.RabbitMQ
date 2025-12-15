@@ -22,7 +22,7 @@ internal class EventPublisherManager(
     public async Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent)
         where TPublishEvent : class, IPublishEvent
     {
-        await Task.Run(() => { PublishEventToRabbitMq(publishEvent); });
+        await PublishEventToRabbitMqAsync(publishEvent);
     }
 
     #endregion
@@ -69,6 +69,12 @@ internal class EventPublisherManager(
     private void PublishEventToRabbitMq<TPublishEvent>(TPublishEvent publishEvent)
         where TPublishEvent : class, IPublishEvent
     {
+        PublishEventToRabbitMqAsync(publishEvent).GetAwaiter().GetResult();
+    }
+
+    private async Task PublishEventToRabbitMqAsync<TPublishEvent>(TPublishEvent publishEvent)
+        where TPublishEvent : class, IPublishEvent
+    {
         if (eventPublisherCollector == null)
         {
             logger.LogWarning(
@@ -91,15 +97,16 @@ internal class EventPublisherManager(
 
             using var channel = eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
 
-            var properties = channel.CreateBasicProperties();
-            properties.MessageId = publishEvent.EventId.ToString();
-            properties.Type = eventTypeName;
+            var properties = new BasicProperties
+            {
+                MessageId = publishEvent.EventId.ToString(),
+                Type = eventTypeName
+            };
 
             var headers = new Dictionary<string, object>
             {
                 { EventStorageInvestigationTagNames.EventNamingPolicyTypeTag, eventSettings.PropertyNamingPolicy?.ToString() }
             };
-            properties.Headers = headers;
             if (activity is not null)
                 headers.Add(EventBusTraceInstrumentation.TraceParentIdKey, activity.Id);
 
@@ -126,8 +133,14 @@ internal class EventPublisherManager(
             }
 
             var messageBody = Encoding.UTF8.GetBytes(payload);
-            channel.BasicPublish(eventSettings.VirtualHostSettings.ExchangeName, eventSettings.RoutingKey,
-                properties, messageBody);
+            properties.Headers = headers;
+            await channel.BasicPublishAsync(
+                exchange: eventSettings.VirtualHostSettings.ExchangeName,
+                routingKey: eventSettings.RoutingKey,
+                mandatory: false,
+                basicProperties: properties,
+                body: messageBody,
+                cancellationToken: CancellationToken.None);
         }
         catch (Exception ex)
         {
