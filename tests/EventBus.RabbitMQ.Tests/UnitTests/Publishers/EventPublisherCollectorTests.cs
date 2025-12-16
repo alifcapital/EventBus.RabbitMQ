@@ -123,6 +123,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
     [Test]
     public async Task CreateExchangeForPublishersAsync_CallingWithPublisherSettings_ShouldCreateExchange()
     {
+        var cancellationToken = CancellationToken.None;
         var options = new Action<EventPublisherOptions>(x => { x.RoutingKey = "TestRoutingKey"; });
         _publisherCollector.AddPublisher<SimplePublishEvent>(options);
         var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
@@ -138,7 +139,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         _publisherCollector.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
         var rabbitMqConnection = Substitute.For<IRabbitMqConnection>();
         var channel = Substitute.For<IChannel>();
-        rabbitMqConnection.CreateChannelAsync().Returns(Task.FromResult(channel));
+        rabbitMqConnection.CreateChannelAsync(cancellationToken).Returns(Task.FromResult(channel));
         channel.ExchangeDeclareAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
@@ -152,10 +153,10 @@ public class EventPublisherCollectorTests : BaseTestEntity
         _rabbitMqConnectionManager.GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>())
             .Returns(rabbitMqConnection);
 
-        await _publisherCollector.CreateExchangeForPublishersAsync();
+        await _publisherCollector.CreateExchangeForPublishersAsync(cancellationToken);
 
         _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>());
-        await rabbitMqConnection.Received(1).CreateChannelAsync();
+        await rabbitMqConnection.Received(1).CreateChannelAsync(cancellationToken);
     }
 
     #endregion

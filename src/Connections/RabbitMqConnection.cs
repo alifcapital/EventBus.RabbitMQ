@@ -138,38 +138,38 @@ internal class RabbitMqConnection : IRabbitMqConnection
     /// <summary>
     /// The event handler for reconnecting when the connection is blocked
     /// </summary>
-    private async Task OnConnectionBlockedAsync(object sender, ConnectionBlockedEventArgs e)
+    private async Task OnConnectionBlockedAsync(object sender, ConnectionBlockedEventArgs e, CancellationToken cancellationToken)
     {
-        await ReconnectAsync();
+        await ReconnectAsync(cancellationToken);
     }
 
     /// <summary>
     /// The event handler for reconnecting when an exception is thrown
     /// </summary>
-    private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
+    private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e, CancellationToken cancellationToken)
     {
-        await ReconnectAsync();
+        await ReconnectAsync(cancellationToken);
     }
 
     /// <summary>
     /// The event handler for reconnecting when the connection is shutdown
     /// </summary>
-    private async Task OnConnectionShutdownAsync(object sender, ShutdownEventArgs reason)
+    private async Task OnConnectionShutdownAsync(object sender, ShutdownEventArgs reason, CancellationToken cancellationToken)
     {
-        await ReconnectAsync();
+        await ReconnectAsync(cancellationToken);
     }
 
-    private async Task ReconnectAsync()
+    private async Task ReconnectAsync(CancellationToken cancellationToken)
     {
         if (_disposed) return;
 
-        await _connectionGate.WaitAsync(CancellationToken.None);
+        await _connectionGate.WaitAsync(cancellationToken);
         try
         {
             if (_disposed) return;
 
             DisposeConnectionIfExists();
-            await ConnectCoreAsync(CancellationToken.None);
+            await ConnectCoreAsync(cancellationToken);
         }
         finally
         {

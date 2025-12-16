@@ -34,12 +34,12 @@ internal interface IEventPublisherCollector
     /// </summary>
     /// <param name="settings">Publisher setting to open connection</param>
     /// <returns>Newly created RabbitMQ channel</returns>
-    public Task<IChannel> CreateRabbitMqChannel(EventPublisherOptions settings);
+    public Task<IChannel> CreateRabbitMqChannel(EventPublisherOptions settings, CancellationToken cancellationToken);
 
     /// <summary>
     /// Creating an exchange for each registered publisher and 
     /// </summary>
-    internal Task CreateExchangeForPublishersAsync();
+    internal Task CreateExchangeForPublishersAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// For printing all loaded publishers information to the logger for investigation purposes.

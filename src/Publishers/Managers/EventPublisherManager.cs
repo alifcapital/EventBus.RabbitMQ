@@ -13,7 +13,9 @@ namespace EventBus.RabbitMQ.Publishers.Managers;
 
 internal class EventPublisherManager(
     ILogger<EventPublisherManager> logger,
-    IEventPublisherCollector eventPublisherCollector = null) : IEventPublisherManager
+    CancellationToken cancellationToken,
+    IEventPublisherCollector eventPublisherCollector = null
+    ) : IEventPublisherManager
 {
     private readonly ConcurrentDictionary<Guid, IPublishEvent> _eventsToPublish = [];
 
@@ -95,7 +97,7 @@ internal class EventPublisherManager(
             using var activity = EventBusTraceInstrumentation.StartActivity(
                 $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer, traceParentId);
 
-            using var channel = await eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
+            using var channel = await eventPublisherCollector.CreateRabbitMqChannel(eventSettings, cancellationToken);
 
             var properties = new BasicProperties
             {
@@ -140,7 +142,7 @@ internal class EventPublisherManager(
                 mandatory: false,
                 basicProperties: properties,
                 body: messageBody,
-                cancellationToken: CancellationToken.None);
+                cancellationToken: cancellationToken);
         }
         catch (Exception ex)
         {

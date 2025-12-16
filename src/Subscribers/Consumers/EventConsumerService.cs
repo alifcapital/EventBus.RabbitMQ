@@ -32,6 +32,7 @@ internal class EventConsumerService : IEventConsumerService
     /// Dictionary collection to store all events and event handlers information
     /// </summary>
     private readonly Dictionary<string, SubscribersInformation> _subscribers = [];
+    private CancellationToken _serviceCancellationToken;
 
     /// <summary>
     /// The event to be executed after executing all subscribers of the event.
@@ -69,14 +70,19 @@ internal class EventConsumerService : IEventConsumerService
     /// <summary>
     /// Starts receiving events by creating a consumer
     /// </summary>
-    public async Task CreateChannelAndSubscribeReceiverAsync()
+    public async Task CreateChannelAndSubscribeReceiverAsync(CancellationToken cancellationToken)
     {
+        _serviceCancellationToken = cancellationToken;
         try
         {
-            _consumerChannel = await CreateConsumerChannelAsync();
+            _consumerChannel = await CreateConsumerChannelAsync(cancellationToken);
             var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
             consumer.ReceivedAsync += Consumer_ReceivingEvent;
-            _ = await _consumerChannel.BasicConsumeAsync(queue: _connectionOptions.QueueName, autoAck: false, consumer: consumer);
+            _ = await _consumerChannel.BasicConsumeAsync(
+                queue: _connectionOptions.QueueName,
+                autoAck: false,
+                consumer: consumer,
+                cancellationToken: cancellationToken);
         }
         catch (IOException e)
         {
@@ -89,11 +95,11 @@ internal class EventConsumerService : IEventConsumerService
     /// To create channel for consumer. If the channel is disconnected, it will try to create a new one.
     /// </summary>
     /// <returns>Returns create channel</returns>
-    private async Task<IChannel> CreateConsumerChannelAsync()
+    private async Task<IChannel> CreateConsumerChannelAsync(CancellationToken cancellationToken)
     {
         _logger.LogTrace("Creating RabbitMQ consumer channel");
 
-        var channel = await _connection.CreateChannelAsync();
+        var channel = await _connection.CreateChannelAsync(cancellationToken);
 
         var virtualHostSettings = _connectionOptions.VirtualHostSettings;
         await channel.ExchangeDeclareAsync(
@@ -103,7 +109,7 @@ internal class EventConsumerService : IEventConsumerService
             autoDelete: false,
             arguments: virtualHostSettings.ExchangeArguments,
             noWait: false,
-            cancellationToken: CancellationToken.None);
+            cancellationToken: cancellationToken);
 
         await channel.QueueDeclareAsync(
             queue: _connectionOptions.QueueName,
@@ -112,7 +118,7 @@ internal class EventConsumerService : IEventConsumerService
             autoDelete: false,
             arguments: virtualHostSettings.QueueArguments,
             noWait: false,
-            cancellationToken: CancellationToken.None);
+            cancellationToken: cancellationToken);
         foreach (var eventSettings in _subscribers.Values.Select(s => s.Settings))
             await channel.QueueBindAsync(
                 queue: _connectionOptions.QueueName,
@@ -120,7 +126,7 @@ internal class EventConsumerService : IEventConsumerService
                 routingKey: eventSettings.RoutingKey,
                 arguments: null,
                 noWait: false,
-                cancellationToken: CancellationToken.None);
+                cancellationToken: cancellationToken);
 
         channel.CallbackExceptionAsync += OnCallbackExceptionAsync;
 
@@ -132,7 +138,16 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
-        await _reopenChannelGate.WaitAsync(CancellationToken.None);
+        var shouldRecreate = false;
+        try
+        {
+            await _reopenChannelGate.WaitAsync(_serviceCancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         try
         {
             _logger.LogWarning(e.Exception, "Recreating RabbitMQ consumer channel after exception");
@@ -141,8 +156,7 @@ internal class EventConsumerService : IEventConsumerService
             {
                 _consumerChannel.CallbackExceptionAsync -= OnCallbackExceptionAsync;
                 _consumerChannel.Dispose();
-                
-                await CreateChannelAndSubscribeReceiverAsync();
+                shouldRecreate = true;
             }
             catch (Exception ex)
             {
@@ -156,6 +170,9 @@ internal class EventConsumerService : IEventConsumerService
         {
             _reopenChannelGate.Release();
         }
+
+        if (shouldRecreate)
+            await CreateChannelAndSubscribeReceiverAsync(_serviceCancellationToken);
     }
 
     #endregion
@@ -225,7 +242,7 @@ internal class EventConsumerService : IEventConsumerService
                 if (headers.TryGetValue(EventBusInvestigationTagNames.EventNamingPolicyTypeTag,
                         out var eventNamingPolicy))
                 {
-                    var configuredNamingPolicy = subscribersInformation.Settings.PropertyNamingPolicy!.ToString();
+                    var configuredNamingPolicy = subscribersInformation.Settings.PropertyNamingPolicy.ToString();
                     if (configuredNamingPolicy != eventNamingPolicy)
                     {
                         var message =
@@ -266,7 +283,7 @@ internal class EventConsumerService : IEventConsumerService
         ValueTask MarkEventIsDeliveredAsync()
         {
             return _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag, multiple: false,
-                cancellationToken: CancellationToken.None);
+                cancellationToken: _serviceCancellationToken);
         }
 
         static string SerializeData<TValue>(TValue data)
