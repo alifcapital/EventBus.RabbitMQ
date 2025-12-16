@@ -72,7 +72,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     /// <summary>
     /// Creating an exchange for each registered publisher and 
     /// </summary>
-    public async Task CreateExchangeForPublishers()
+    public async Task CreateExchangeForPublishersAsync()
     {
         var createdExchangeNames = new HashSet<string>();
         foreach (var (eventName, eventSettings) in _publishersConnectionInfo)
@@ -134,7 +134,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     public Task<IChannel> CreateRabbitMqChannel(EventPublisherOptions settings)
     {
         var connection = _rabbitMqConnectionManager.GetOrCreateConnection(settings.VirtualHostSettings);
-        return connection.CreateChannel();
+        return connection.CreateChannelAsync();
     }
 
     #endregion

@@ -39,7 +39,7 @@ internal interface IEventPublisherCollector
     /// <summary>
     /// Creating an exchange for each registered publisher and 
     /// </summary>
-    internal Task CreateExchangeForPublishers();
+    internal Task CreateExchangeForPublishersAsync();
 
     /// <summary>
     /// For printing all loaded publishers information to the logger for investigation purposes.

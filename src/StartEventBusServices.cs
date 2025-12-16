@@ -19,8 +19,8 @@ internal class StartEventBusServices(
     {
         try
         {
-            await publisherCollector.CreateExchangeForPublishers();
-            await subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEvents();
+            await publisherCollector.CreateExchangeForPublishersAsync();
+            await subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEventsAsync();
             
             publisherCollector.PrintLoadedPublishersInformation();
             subscriberCollector.PrintLoadedSubscribersInformation();

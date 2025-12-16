@@ -69,7 +69,7 @@ internal class EventConsumerService : IEventConsumerService
     /// <summary>
     /// Starts receiving events by creating a consumer
     /// </summary>
-    public async Task CreateChannelAndSubscribeReceiver()
+    public async Task CreateChannelAndSubscribeReceiverAsync()
     {
         try
         {
@@ -93,7 +93,7 @@ internal class EventConsumerService : IEventConsumerService
     {
         _logger.LogTrace("Creating RabbitMQ consumer channel");
 
-        var channel = await _connection.CreateChannel();
+        var channel = await _connection.CreateChannelAsync();
 
         var virtualHostSettings = _connectionOptions.VirtualHostSettings;
         await channel.ExchangeDeclareAsync(
@@ -153,7 +153,7 @@ internal class EventConsumerService : IEventConsumerService
         }
 
         if (shouldRecreate)
-            await CreateChannelAndSubscribeReceiver();
+            await CreateChannelAndSubscribeReceiverAsync();
     }
 
     #endregion

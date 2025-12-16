@@ -14,7 +14,7 @@ internal interface IEventConsumerService
     /// <summary>
     /// Starts receiving events by creating a consumer
     /// </summary>
-    public Task CreateChannelAndSubscribeReceiver();
+    public Task CreateChannelAndSubscribeReceiverAsync();
     
     /// <summary>
     /// Gets the settings of the event subscriber which is used to create the consumer

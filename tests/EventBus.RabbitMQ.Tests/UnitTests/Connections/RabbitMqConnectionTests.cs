@@ -35,12 +35,12 @@ public class RabbitMqConnectionTests : BaseTestEntity
 
     #endregion
 
-    #region Connect
+    #region ConnectAsync
 
     [Test]
-    public void Connect_WhenCannotOpenConnection_ShouldThrowEventBusException()
+    public async Task ConnectAsync_WhenCannotOpenConnection_ShouldThrowEventBusException()
     {
-        var exception = Assert.Throws<EventBusException>(() => _connection.Connect());
+        var exception = Assert.ThrowsAsync<EventBusException>(async () => await _connection.ConnectAsync());
 
         var expectedMessage =
             $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.";

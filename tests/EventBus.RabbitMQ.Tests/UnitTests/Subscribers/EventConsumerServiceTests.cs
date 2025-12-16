@@ -76,14 +76,14 @@ public class EventConsumerServiceTests : BaseTestEntity
 
     #endregion
 
-    #region StartAndSubscribeReceiver
+    #region StartAndSubscribeReceiverAsync
 
     [Test]
-    public async Task StartAndSubscribeReceiver_StartingConsumerWithDefaultSetting_ShouldCreateConsumer()
+    public async Task StartAndSubscribeReceiverAsync_StartingConsumerWithDefaultSetting_ShouldCreateConsumer()
     {
         var connection = Substitute.For<IRabbitMqConnection>();
         var channel = Substitute.For<IChannel>();
-        connection.CreateChannel().Returns(Task.FromResult(channel));
+        connection.CreateChannelAsync().Returns(Task.FromResult(channel));
         channel.ExchangeDeclareAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
@@ -123,7 +123,7 @@ public class EventConsumerServiceTests : BaseTestEntity
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromResult("consumer-tag"));
         _rabbitMqConnectionManager.GetOrCreateConnection(_settings.VirtualHostSettings).Returns(connection);
-        await _consumerService.CreateChannelAndSubscribeReceiver();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync();
 
         var field = _consumerService.GetType()
             .GetField("_consumerChannel", BindingFlags.NonPublic | BindingFlags.Instance);
