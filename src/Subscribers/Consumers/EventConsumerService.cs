@@ -64,7 +64,7 @@ internal class EventConsumerService : IEventConsumerService
 
     #region Create channel and subscribe receiver
 
-    private readonly Lock _lockReOpenChannel = new();
+    private readonly SemaphoreSlim _reopenChannelGate = new(1, 1);
 
     /// <summary>
     /// Starts receiving events by creating a consumer
@@ -132,8 +132,8 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
-        var shouldRecreate = false;
-        lock (_lockReOpenChannel)
+        await _reopenChannelGate.WaitAsync(CancellationToken.None);
+        try
         {
             _logger.LogWarning(e.Exception, "Recreating RabbitMQ consumer channel after exception");
 
@@ -141,7 +141,8 @@ internal class EventConsumerService : IEventConsumerService
             {
                 _consumerChannel.CallbackExceptionAsync -= OnCallbackExceptionAsync;
                 _consumerChannel.Dispose();
-                shouldRecreate = true;
+                
+                await CreateChannelAndSubscribeReceiverAsync();
             }
             catch (Exception ex)
             {
@@ -151,9 +152,10 @@ internal class EventConsumerService : IEventConsumerService
                 throw new EventBusException(ex, message);
             }
         }
-
-        if (shouldRecreate)
-            await CreateChannelAndSubscribeReceiverAsync();
+        finally
+        {
+            _reopenChannelGate.Release();
+        }
     }
 
     #endregion
