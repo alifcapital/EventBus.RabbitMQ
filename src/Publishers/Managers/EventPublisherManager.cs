@@ -163,7 +163,7 @@ internal class EventPublisherManager(
     }
 
     /// <summary>
-    /// Publish all collected events to the RabbitMQ before a disposing the object.
+    /// Publish all collected events to the RabbitMQ before disposing the object.
     /// </summary>
     private void Disposing()
     {
