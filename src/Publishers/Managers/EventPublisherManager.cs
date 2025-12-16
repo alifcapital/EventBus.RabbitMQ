@@ -95,7 +95,7 @@ internal class EventPublisherManager(
             using var activity = EventBusTraceInstrumentation.StartActivity(
                 $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer, traceParentId);
 
-            using var channel = eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
+            using var channel = await eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
 
             var properties = new BasicProperties
             {

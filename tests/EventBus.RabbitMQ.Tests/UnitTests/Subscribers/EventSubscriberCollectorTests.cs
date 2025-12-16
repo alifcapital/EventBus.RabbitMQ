@@ -182,7 +182,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
     #region CreateConsumerForEachQueueAndStartReceivingEvents
 
     [Test]
-    public void CreateConsumerForEachQueueAndStartReceivingEvents_WithSubscribers_ShouldCreateConsumer()
+    public async Task CreateConsumerForEachQueueAndStartReceivingEvents_WithSubscribers_ShouldCreateConsumer()
     {
         var options = new Action<EventSubscriberOptions>(x =>
         {
@@ -211,11 +211,12 @@ public class EventSubscriberCollectorTests : BaseTestEntity
                 false
             )
             .Returns(eventConsumer);
+        eventConsumer.CreateChannelAndSubscribeReceiver().Returns(Task.CompletedTask);
 
         _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
         _subscriberCollector.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
 
-        _subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEvents();
+        await _subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEvents();
 
         var eventConsumers = GetEventConsumerServices();
 
@@ -227,6 +228,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
                 subscribersInfo.Settings.QueueName == "TestQueue"
             )
         );
+        await eventConsumer.Received(1).CreateChannelAndSubscribeReceiver();
     }
 
     #endregion

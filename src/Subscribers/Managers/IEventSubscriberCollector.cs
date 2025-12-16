@@ -21,7 +21,7 @@ internal interface IEventSubscriberCollector
     /// <summary>
     /// Creating and register each unique a queue for different virtual host and start receiving events
     /// </summary>
-    public void CreateConsumerForEachQueueAndStartReceivingEvents();
+    public Task CreateConsumerForEachQueueAndStartReceivingEvents();
 
     /// <summary>
     /// For printing all loaded subscribers information to the logger for investigation purposes.

@@ -20,12 +20,11 @@ internal class RabbitMqConnection : IRabbitMqConnection
     private readonly ILogger<RabbitMqConnection> _logger;
     private IConnection _connection;
 
-    public RabbitMqConnection(RabbitMqHostSettings virtualHostSettings, IServiceProvider serviceProvider,
-        IConnectionFactory connectionFactory = null)
+    public RabbitMqConnection(RabbitMqHostSettings virtualHostSettings, IServiceProvider serviceProvider)
     {
         _connectionOptions = virtualHostSettings;
         _logger = serviceProvider.GetRequiredService<ILogger<RabbitMqConnection>>();
-        _connectionFactory = connectionFactory ?? CreateConnectionFactory();
+        _connectionFactory = CreateConnectionFactory();
     }
 
     #region TryConnect
@@ -83,7 +82,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
     #region Create channel
 
-    public IChannel CreateChannel()
+    public async Task<IChannel> CreateChannel()
     {
         try
         {
@@ -93,15 +92,22 @@ internal class RabbitMqConnection : IRabbitMqConnection
                 throw new EventBusException(
                     $"RabbitMQ connection is not opened yet to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
 
-            return _connection
-                .CreateChannelAsync(new CreateChannelOptions(false, false, null, null), CancellationToken.None)
-                .GetAwaiter().GetResult();
+            var channelOptions = new CreateChannelOptions(
+                publisherConfirmationsEnabled: false,
+                publisherConfirmationTrackingEnabled: false,
+                outstandingPublisherConfirmationsRateLimiter: null,
+                consumerDispatchConcurrency: null
+            );
+
+            return await _connection.CreateChannelAsync(
+                channelOptions,
+                CancellationToken.None);
         }
         catch (IOException e)
         {
             throw new EventBusException(e,
                 $"Error while creating a channel to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
-        }   
+        }
     }
 
     #endregion

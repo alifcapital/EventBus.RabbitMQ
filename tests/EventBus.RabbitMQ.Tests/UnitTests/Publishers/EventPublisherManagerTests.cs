@@ -49,12 +49,12 @@ public class EventPublisherManagerTests : BaseTestEntity
         eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, publishEvent.GetType().Name);
         _publisherCollector.GetPublisherSettings(publishEvent).Returns(eventSettings);
         var channel = Substitute.For<IChannel>();
-        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
+        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(Task.FromResult(channel));
 
         await _publisherManager.PublishAsync(publishEvent);
 
         _publisherCollector.Received(1).GetPublisherSettings(publishEvent);
-        _publisherCollector.Received(1).CreateRabbitMqChannel(eventSettings);
+        await _publisherCollector.Received(1).CreateRabbitMqChannel(eventSettings);
         await channel.Received(1).BasicPublishAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
             Arg.Any<BasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>());
     }
@@ -135,7 +135,7 @@ public class EventPublisherManagerTests : BaseTestEntity
         eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, publishEvent.GetType().Name);
         _publisherCollector.GetPublisherSettings(publishEvent).Returns(eventSettings);
         var channel = Substitute.For<IChannel>();
-        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
+        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(Task.FromResult(channel));
 
         _publisherManager.Dispose();
 
@@ -159,7 +159,7 @@ public class EventPublisherManagerTests : BaseTestEntity
         eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, nameof(SimplePublishEvent));
         _publisherCollector.GetPublisherSettings(Arg.Any<IPublishEvent>()).Returns(eventSettings);
         var channel = Substitute.For<IChannel>();
-        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
+        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(Task.FromResult(channel));
 
         _publisherManager.Dispose();
 

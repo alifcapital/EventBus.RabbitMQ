@@ -69,14 +69,14 @@ internal class EventConsumerService : IEventConsumerService
     /// <summary>
     /// Starts receiving events by creating a consumer
     /// </summary>
-    public void CreateChannelAndSubscribeReceiver()
+    public async Task CreateChannelAndSubscribeReceiver()
     {
         try
         {
-            _consumerChannel = CreateConsumerChannel();
+            _consumerChannel = await CreateConsumerChannelAsync();
             var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
             consumer.ReceivedAsync += Consumer_ReceivingEvent;
-            _consumerChannel.BasicConsumeAsync(queue: _connectionOptions.QueueName, autoAck: false, consumer: consumer);
+            _ = await _consumerChannel.BasicConsumeAsync(queue: _connectionOptions.QueueName, autoAck: false, consumer: consumer);
         }
         catch (IOException e)
         {
@@ -89,38 +89,38 @@ internal class EventConsumerService : IEventConsumerService
     /// To create channel for consumer. If the channel is disconnected, it will try to create a new one.
     /// </summary>
     /// <returns>Returns create channel</returns>
-    private IChannel CreateConsumerChannel()
+    private async Task<IChannel> CreateConsumerChannelAsync()
     {
         _logger.LogTrace("Creating RabbitMQ consumer channel");
 
-        var channel = _connection.CreateChannel();
+        var channel = await _connection.CreateChannel();
 
         var virtualHostSettings = _connectionOptions.VirtualHostSettings;
-        channel.ExchangeDeclareAsync(
-                exchange: virtualHostSettings.ExchangeName,
-                type: virtualHostSettings.ExchangeType,
-                durable: true,
-                autoDelete: false,
-                arguments: virtualHostSettings.ExchangeArguments,
-                noWait: false,
-                cancellationToken: CancellationToken.None);
+        await channel.ExchangeDeclareAsync(
+            exchange: virtualHostSettings.ExchangeName,
+            type: virtualHostSettings.ExchangeType,
+            durable: true,
+            autoDelete: false,
+            arguments: virtualHostSettings.ExchangeArguments,
+            noWait: false,
+            cancellationToken: CancellationToken.None);
 
-        channel.QueueDeclareAsync(
+        await channel.QueueDeclareAsync(
+            queue: _connectionOptions.QueueName,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            arguments: virtualHostSettings.QueueArguments,
+            noWait: false,
+            cancellationToken: CancellationToken.None);
+        foreach (var eventSettings in _subscribers.Values.Select(s => s.Settings))
+            await channel.QueueBindAsync(
                 queue: _connectionOptions.QueueName,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                arguments: virtualHostSettings.QueueArguments,
+                exchange: virtualHostSettings.ExchangeName,
+                routingKey: eventSettings.RoutingKey,
+                arguments: null,
                 noWait: false,
                 cancellationToken: CancellationToken.None);
-        foreach (var eventSettings in _subscribers.Values.Select(s => s.Settings))
-            channel.QueueBindAsync(
-                    queue: _connectionOptions.QueueName,
-                    exchange: virtualHostSettings.ExchangeName,
-                    routingKey: eventSettings.RoutingKey,
-                    arguments: null,
-                    noWait: false,
-                    cancellationToken: CancellationToken.None);
 
         channel.CallbackExceptionAsync += OnCallbackExceptionAsync;
 
@@ -130,8 +130,9 @@ internal class EventConsumerService : IEventConsumerService
     /// <summary>
     /// The event handler for recreating the consumer channel when an exception is thrown.
     /// </summary>
-    private Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
+    private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
+        var shouldRecreate = false;
         lock (_lockReOpenChannel)
         {
             _logger.LogWarning(e.Exception, "Recreating RabbitMQ consumer channel after exception");
@@ -140,8 +141,7 @@ internal class EventConsumerService : IEventConsumerService
             {
                 _consumerChannel.CallbackExceptionAsync -= OnCallbackExceptionAsync;
                 _consumerChannel.Dispose();
-
-                CreateChannelAndSubscribeReceiver();
+                shouldRecreate = true;
             }
             catch (Exception ex)
             {
@@ -152,7 +152,8 @@ internal class EventConsumerService : IEventConsumerService
             }
         }
 
-        return Task.CompletedTask;
+        if (shouldRecreate)
+            await CreateChannelAndSubscribeReceiver();
     }
 
     #endregion

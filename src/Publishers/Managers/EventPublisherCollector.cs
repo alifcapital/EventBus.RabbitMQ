@@ -72,7 +72,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     /// <summary>
     /// Creating an exchange for each registered publisher and 
     /// </summary>
-    public void CreateExchangeForPublishers()
+    public async Task CreateExchangeForPublishers()
     {
         var createdExchangeNames = new HashSet<string>();
         foreach (var (eventName, eventSettings) in _publishersConnectionInfo)
@@ -83,15 +83,15 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 var exchangeId = $"{virtualHostSettings.VirtualHost}-{virtualHostSettings.HostPort}-{virtualHostSettings.ExchangeName}";
                 if (createdExchangeNames.Contains(exchangeId)) continue;
 
-                using var channel = CreateRabbitMqChannel(eventSettings);
-                channel.ExchangeDeclareAsync(
-                        exchange: virtualHostSettings.ExchangeName,
-                        type: virtualHostSettings.ExchangeType,
-                        durable: true,
-                        autoDelete: false,
-                        arguments: virtualHostSettings.ExchangeArguments,
-                        noWait: false,
-                        cancellationToken: CancellationToken.None);
+                using var channel = await CreateRabbitMqChannel(eventSettings);
+                await channel.ExchangeDeclareAsync(
+                    exchange: virtualHostSettings.ExchangeName,
+                    type: virtualHostSettings.ExchangeType,
+                    durable: true,
+                    autoDelete: false,
+                    arguments: virtualHostSettings.ExchangeArguments,
+                    noWait: false,
+                    cancellationToken: CancellationToken.None);
 
                 createdExchangeNames.Add(exchangeId);
             }
@@ -131,7 +131,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     /// Since the IOException is thrown when there is a problem with the network or the connection to the RabbitMQ server,
     /// and also that is not inherit from the Exception class, we need to catch it specifically and wrap it in our custom exception.
     /// </exception>
-    public IChannel CreateRabbitMqChannel(EventPublisherOptions settings)
+    public Task<IChannel> CreateRabbitMqChannel(EventPublisherOptions settings)
     {
         var connection = _rabbitMqConnectionManager.GetOrCreateConnection(settings.VirtualHostSettings);
         return connection.CreateChannel();

@@ -108,7 +108,7 @@ internal class EventSubscriberCollector(
 
     #region CreateConsumerForEachQueueAndStartReceivingEvents
 
-    public void CreateConsumerForEachQueueAndStartReceivingEvents()
+    public async Task CreateConsumerForEachQueueAndStartReceivingEvents()
     {
         try
         {
@@ -131,7 +131,7 @@ internal class EventSubscriberCollector(
             {
                 try
                 {
-                    consumer.CreateChannelAndSubscribeReceiver();
+                    await consumer.CreateChannelAndSubscribeReceiver();
                 }
                 catch (Exception e)
                 {
