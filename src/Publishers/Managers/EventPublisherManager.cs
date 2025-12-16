@@ -99,7 +99,7 @@ internal class EventPublisherManager(
                 traceParentId);
 
             await using var channel =
-                await eventPublisherCollector.CreateRabbitMqChannel(eventSettings, cancellationToken);
+                await eventPublisherCollector.CreateRabbitMqChannelAsync(eventSettings, cancellationToken);
 
             var properties = new BasicProperties
             {
