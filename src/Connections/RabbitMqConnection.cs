@@ -30,7 +30,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
     #region TryConnect
 
-    public async Task ConnectAsync(CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
 
@@ -91,7 +91,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
     #region Create channel
 
-    public async Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default)
+    public async Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
 

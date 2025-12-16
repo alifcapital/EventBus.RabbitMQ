@@ -14,12 +14,12 @@ internal interface IRabbitMqConnection : IDisposable
     /// For connecting the server to the RabbitMQ.
     /// </summary>
     /// <throws cref="EventBusException">Throws <see cref="EventBusException"/> when connection cannot be opened.</throws>
-    Task ConnectAsync(CancellationToken cancellationToken = default);
+    Task ConnectAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// To create a model after opening connection. If the connection is not opened yet, it will try to open.
     /// </summary>
     /// <throws cref="EventBusException">Throws <see cref="EventBusException"/> when connection cannot be opened or create model.</throws>
     /// <returns>Returns created model</returns>
-    Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default);
+    Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken);
 }
