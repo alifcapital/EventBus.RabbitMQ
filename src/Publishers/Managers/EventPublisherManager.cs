@@ -14,16 +14,16 @@ namespace EventBus.RabbitMQ.Publishers.Managers;
 internal class EventPublisherManager(
     ILogger<EventPublisherManager> logger,
     IEventPublisherCollector eventPublisherCollector = null
-    ) : IEventPublisherManager
+) : IEventPublisherManager
 {
     private readonly ConcurrentDictionary<Guid, IPublishEvent> _eventsToPublish = [];
 
     #region PublishAsync
 
-    public async Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent)
+    public async Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent, CancellationToken cancellationToken)
         where TPublishEvent : class, IPublishEvent
     {
-        await PublishEventToRabbitMqAsync(publishEvent);
+        await PublishEventToRabbitMqAsync(publishEvent, cancellationToken);
     }
 
     #endregion
@@ -70,10 +70,11 @@ internal class EventPublisherManager(
     private void PublishEventToRabbitMq<TPublishEvent>(TPublishEvent publishEvent)
         where TPublishEvent : class, IPublishEvent
     {
-        PublishEventToRabbitMqAsync(publishEvent).GetAwaiter().GetResult();
+        PublishEventToRabbitMqAsync(publishEvent, CancellationToken.None).GetAwaiter().GetResult();
     }
 
-    private async Task PublishEventToRabbitMqAsync<TPublishEvent>(TPublishEvent publishEvent)
+    private async Task PublishEventToRabbitMqAsync<TPublishEvent>(TPublishEvent publishEvent,
+        CancellationToken cancellationToken)
         where TPublishEvent : class, IPublishEvent
     {
         if (eventPublisherCollector == null)
@@ -94,9 +95,11 @@ internal class EventPublisherManager(
 
             var traceParentId = Activity.Current?.Id;
             using var activity = EventBusTraceInstrumentation.StartActivity(
-                $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer, traceParentId);
+                $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer,
+                traceParentId);
 
-            await using var channel = await eventPublisherCollector.CreateRabbitMqChannel(eventSettings, CancellationToken.None);
+            await using var channel =
+                await eventPublisherCollector.CreateRabbitMqChannel(eventSettings, cancellationToken);
 
             var properties = new BasicProperties
             {
@@ -106,7 +109,10 @@ internal class EventPublisherManager(
 
             var headers = new Dictionary<string, object>
             {
-                { EventStorageInvestigationTagNames.EventNamingPolicyTypeTag, eventSettings.PropertyNamingPolicy?.ToString() }
+                {
+                    EventStorageInvestigationTagNames.EventNamingPolicyTypeTag,
+                    eventSettings.PropertyNamingPolicy?.ToString()
+                }
             };
             if (activity is not null)
                 headers.Add(EventBusTraceInstrumentation.TraceParentIdKey, activity.Id);
@@ -141,7 +147,8 @@ internal class EventPublisherManager(
                 mandatory: false,
                 basicProperties: properties,
                 body: messageBody,
-                cancellationToken: CancellationToken.None);
+                cancellationToken: cancellationToken
+            );
         }
         catch (Exception ex)
         {

@@ -12,7 +12,7 @@ public interface IEventPublisherManager : IDisposable
     /// </summary>
     /// <param name="publishEvent">Event to publish</param>
     /// <typeparam name="TPublishEvent">Event type that must implement from the IPublishEvent</typeparam>
-    public Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent)
+    public Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent, CancellationToken cancellationToken)
         where TPublishEvent : class, IPublishEvent;
     
     /// <summary>

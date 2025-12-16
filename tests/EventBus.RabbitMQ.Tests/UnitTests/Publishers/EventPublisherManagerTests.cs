@@ -52,7 +52,7 @@ public class EventPublisherManagerTests : BaseTestEntity
         var channel = Substitute.For<IChannel>();
         _publisherCollector.CreateRabbitMqChannel(eventSettings, cancellationToken).Returns(Task.FromResult(channel));
 
-        await _publisherManager.PublishAsync(publishEvent);
+        await _publisherManager.PublishAsync(publishEvent, cancellationToken);
 
         _publisherCollector.Received(1).GetPublisherSettings(publishEvent);
         await _publisherCollector.Received(1).CreateRabbitMqChannel(eventSettings, cancellationToken);

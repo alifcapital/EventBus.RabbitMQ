@@ -54,7 +54,7 @@ public class UserController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, [FromQuery] string newName)
+    public async Task<IActionResult> Update(Guid id, [FromQuery] string newName, CancellationToken cancellationToken)
     {
         if (!Items.TryGetValue(id, out User item))
             return NotFound();
@@ -62,7 +62,7 @@ public class UserController : ControllerBase
         var userUpdated = new UserUpdated { UserId = item.Id, OldUserName = item.Name, NewUserName = newName };
         userUpdated.Headers = new();
         userUpdated.Headers.TryAdd("TraceId", HttpContext.TraceIdentifier);
-        await _eventPublisherManager.PublishAsync(userUpdated);
+        await _eventPublisherManager.PublishAsync(userUpdated, cancellationToken);
 
         item.Name = newName;
         return Ok(item);

@@ -20,6 +20,6 @@ public class MessageBrokerEventPublisher(IEventPublisherManager eventPublisher, 
             return;
         }
         
-        await eventPublisher.PublishAsync(publishEvent);
+        await eventPublisher.PublishAsync(publishEvent, CancellationToken.None);
     }
 }

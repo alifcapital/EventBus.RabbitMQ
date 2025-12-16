@@ -154,9 +154,9 @@ internal class RabbitMqConnection : IRabbitMqConnection
     /// <summary>
     /// The event handler for reconnecting when the connection is shutdown
     /// </summary>
-    private async Task OnConnectionShutdownAsync(object sender, ShutdownEventArgs reason)
+    private Task OnConnectionShutdownAsync(object sender, ShutdownEventArgs reason)
     {
-        await ReconnectAsync();
+        return ReconnectAsync();
     }
 
     private async Task ReconnectAsync()
