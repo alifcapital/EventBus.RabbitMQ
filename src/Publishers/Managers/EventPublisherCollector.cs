@@ -83,7 +83,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 var exchangeId = $"{virtualHostSettings.VirtualHost}-{virtualHostSettings.HostPort}-{virtualHostSettings.ExchangeName}";
                 if (createdExchangeNames.Contains(exchangeId)) continue;
 
-                using var channel = await CreateRabbitMqChannel(eventSettings, cancellationToken).ConfigureAwait(false);
+                using var channel = await CreateRabbitMqChannel(eventSettings, cancellationToken);
                 await channel.ExchangeDeclareAsync(
                     exchange: virtualHostSettings.ExchangeName,
                     type: virtualHostSettings.ExchangeType,
@@ -91,7 +91,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                     autoDelete: false,
                     arguments: virtualHostSettings.ExchangeArguments,
                     noWait: false,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    cancellationToken: cancellationToken);
 
                 createdExchangeNames.Add(exchangeId);
             }
