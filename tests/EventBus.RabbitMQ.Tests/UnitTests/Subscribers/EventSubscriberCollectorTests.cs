@@ -179,11 +179,12 @@ public class EventSubscriberCollectorTests : BaseTestEntity
 
     #endregion
 
-    #region CreateConsumerForEachQueueAndStartReceivingEvents
+    #region CreateConsumerForEachQueueAndStartReceivingEventsAsync
 
     [Test]
-    public void CreateConsumerForEachQueueAndStartReceivingEvents_WithSubscribers_ShouldCreateConsumer()
+    public async Task CreateConsumerForEachQueueAndStartReceivingEventsAsync_WithSubscribers_ShouldCreateConsumer()
     {
+        var cancellationToken = CancellationToken.None;
         var options = new Action<EventSubscriberOptions>(x =>
         {
             x.VirtualHostKey = "TestVirtualHostKey";
@@ -211,11 +212,12 @@ public class EventSubscriberCollectorTests : BaseTestEntity
                 false
             )
             .Returns(eventConsumer);
+        eventConsumer.CreateChannelAndSubscribeReceiverAsync(Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         _subscriberCollector.AddSubscriber<SimpleSubscribeEvent, SimpleEventSubscriberHandler>(options);
         _subscriberCollector.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
 
-        _subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEvents();
+        await _subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEventsAsync(cancellationToken);
 
         var eventConsumers = GetEventConsumerServices();
 
@@ -227,6 +229,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
                 subscribersInfo.Settings.QueueName == "TestQueue"
             )
         );
+        await eventConsumer.Received(1).CreateChannelAndSubscribeReceiverAsync(Arg.Any<CancellationToken>());
     }
 
     #endregion

@@ -39,6 +39,7 @@ public class EventPublisherManagerTests : BaseTestEntity
     [Test]
     public async Task PublishAsync_PublishingOneEvent_ShouldBePublishedOneEvent()
     {
+        var cancellationToken = CancellationToken.None;
         var publishEvent = new SimplePublishEvent();
         var eventSettings = new EventPublisherOptions();
         var virtualHostSettings = new RabbitMqHostSettings()
@@ -48,15 +49,15 @@ public class EventPublisherManagerTests : BaseTestEntity
         };
         eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, publishEvent.GetType().Name);
         _publisherCollector.GetPublisherSettings(publishEvent).Returns(eventSettings);
-        var channel = Substitute.For<IModel>();
-        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
+        var channel = Substitute.For<IChannel>();
+        _publisherCollector.CreateRabbitMqChannelAsync(eventSettings, cancellationToken).Returns(Task.FromResult(channel));
 
-        await _publisherManager.PublishAsync(publishEvent);
+        await _publisherManager.PublishAsync(publishEvent, cancellationToken);
 
         _publisherCollector.Received(1).GetPublisherSettings(publishEvent);
-        _publisherCollector.Received(1).CreateRabbitMqChannel(eventSettings);
-        channel.Received(1).BasicPublish(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
-            Arg.Any<IBasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>());
+        await _publisherCollector.Received(1).CreateRabbitMqChannelAsync(eventSettings, cancellationToken);
+        await channel.Received(1).BasicPublishAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
+            Arg.Any<BasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -118,12 +119,12 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherManager.Dispose();
 
         _publisherCollector.DidNotReceive().GetPublisherSettings(Arg.Any<IPublishEvent>());
-        _publisherCollector.DidNotReceive().CreateRabbitMqChannel(Arg.Any<EventPublisherOptions>());
     }
 
     [Test]
     public void Dispose_ThereIsOneCollectedEvent_ShouldBePublishedOneEvent()
     {
+        var cancellationToken = CancellationToken.None;
         var publishEvent = new SimplePublishEvent();
         _publisherManager.Collect(publishEvent);
         var eventSettings = new EventPublisherOptions();
@@ -134,20 +135,21 @@ public class EventPublisherManagerTests : BaseTestEntity
         };
         eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, publishEvent.GetType().Name);
         _publisherCollector.GetPublisherSettings(publishEvent).Returns(eventSettings);
-        var channel = Substitute.For<IModel>();
-        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
+        var channel = Substitute.For<IChannel>();
+        _publisherCollector.CreateRabbitMqChannelAsync(eventSettings, cancellationToken).Returns(Task.FromResult(channel));
 
         _publisherManager.Dispose();
 
         _publisherCollector.Received(1).GetPublisherSettings(publishEvent);
-        _publisherCollector.Received(1).CreateRabbitMqChannel(eventSettings);
-        channel.Received(1).BasicPublish(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
-            Arg.Any<IBasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>());
+        _publisherCollector.Received(1).CreateRabbitMqChannelAsync(eventSettings, cancellationToken);
+        channel.Received(1).BasicPublishAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
+            Arg.Any<BasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
     public void Dispose_ThereAreTwoCollectedEvents_ShouldBePublishedTwoEvents()
     {
+        var cancellationToken = CancellationToken.None;
         _publisherManager.Collect(new SimplePublishEvent());
         _publisherManager.Collect(new SimplePublishEvent());
         var eventSettings = new EventPublisherOptions();
@@ -158,15 +160,15 @@ public class EventPublisherManagerTests : BaseTestEntity
         };
         eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, nameof(SimplePublishEvent));
         _publisherCollector.GetPublisherSettings(Arg.Any<IPublishEvent>()).Returns(eventSettings);
-        var channel = Substitute.For<IModel>();
-        _publisherCollector.CreateRabbitMqChannel(eventSettings).Returns(channel);
+        var channel = Substitute.For<IChannel>();
+        _publisherCollector.CreateRabbitMqChannelAsync(eventSettings, cancellationToken).Returns(Task.FromResult(channel));
 
         _publisherManager.Dispose();
 
         _publisherCollector.Received(2).GetPublisherSettings(Arg.Any<IPublishEvent>());
-        _publisherCollector.Received(2).CreateRabbitMqChannel(eventSettings);
-        channel.Received(2).BasicPublish(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
-            Arg.Any<IBasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>());
+        _publisherCollector.Received(2).CreateRabbitMqChannelAsync(eventSettings, Arg.Any<CancellationToken>());
+        channel.Received(2).BasicPublishAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
+            Arg.Any<BasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>());
     }
 
     #endregion

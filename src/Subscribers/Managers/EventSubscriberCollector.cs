@@ -106,9 +106,9 @@ internal class EventSubscriberCollector(
 
     #endregion
 
-    #region CreateConsumerForEachQueueAndStartReceivingEvents
+    #region CreateConsumerForEachQueueAndStartReceivingEventsAsync
 
-    public void CreateConsumerForEachQueueAndStartReceivingEvents()
+    public async Task CreateConsumerForEachQueueAndStartReceivingEventsAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -131,7 +131,7 @@ internal class EventSubscriberCollector(
             {
                 try
                 {
-                    consumer.CreateChannelAndSubscribeReceiver();
+                    await consumer.CreateChannelAndSubscribeReceiverAsync(cancellationToken);
                 }
                 catch (Exception e)
                 {

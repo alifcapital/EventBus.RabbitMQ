@@ -19,6 +19,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
     private readonly RabbitMqHostSettings _connectionOptions;
     private readonly ILogger<RabbitMqConnection> _logger;
     private IConnection _connection;
+    private readonly SemaphoreSlim _connectionGate = new(1, 1);
 
     public RabbitMqConnection(RabbitMqHostSettings virtualHostSettings, IServiceProvider serviceProvider)
     {
@@ -29,12 +30,14 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
     #region TryConnect
 
-    private readonly Lock _lockOpenConnection = new();
-
-    public void Connect()
+    public async Task ConnectAsync(CancellationToken cancellationToken)
     {
-        lock (_lockOpenConnection)
+        if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
+
+        await _connectionGate.WaitAsync(cancellationToken);
+        try
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
             if (IsConnected) return;
 
             try
@@ -45,20 +48,23 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
                 var policy = Policy.Handle<SocketException>()
                     .Or<BrokerUnreachableException>()
-                    .WaitAndRetry(_connectionOptions.RetryConnectionCount,
+                    .WaitAndRetryAsync(_connectionOptions.RetryConnectionCount,
                         retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))
                     );
 
                 var applicationName = AppDomain.CurrentDomain.FriendlyName;
                 var connectionDisplayName =
                     $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
-                policy.Execute(() => { _connection = _connectionFactory.CreateConnection(connectionDisplayName); });
+
+                _connection = await policy.ExecuteAsync(
+                    ct => _connectionFactory.CreateConnectionAsync(connectionDisplayName, ct),
+                    cancellationToken);
 
                 if (IsConnected)
                 {
-                    _connection!.ConnectionShutdown += OnConnectionShutdown;
-                    _connection!.CallbackException += OnCallbackException;
-                    _connection!.ConnectionBlocked += OnConnectionBlocked;
+                    _connection!.ConnectionShutdownAsync += OnConnectionShutdownAsync;
+                    _connection!.CallbackExceptionAsync += OnCallbackExceptionAsync;
+                    _connection!.ConnectionBlockedAsync += OnConnectionBlockedAsync;
 
                     _logger.LogInformation(
                         "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
@@ -71,23 +77,39 @@ internal class RabbitMqConnection : IRabbitMqConnection
                     $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
             }
         }
+        finally
+        {
+            _connectionGate.Release();
+        }
     }
 
     #endregion
 
     #region Create channel
 
-    public IModel CreateChannel()
+    public async Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken)
     {
+        if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
+
         try
         {
-            Connect();
+            await ConnectAsync(cancellationToken);
 
-            if (!IsConnected)
+            var connection = Volatile.Read(ref _connection);
+            if (connection?.IsOpen != true)
                 throw new EventBusException(
                     $"RabbitMQ connection is not opened yet to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
 
-            return _connection.CreateModel();
+            var channelOptions = new CreateChannelOptions(
+                publisherConfirmationsEnabled: false,
+                publisherConfirmationTrackingEnabled: false,
+                outstandingPublisherConfirmationsRateLimiter: null,
+                consumerDispatchConcurrency: null
+            );
+
+            return await connection.CreateChannelAsync(
+                channelOptions,
+                cancellationToken);
         }
         catch (IOException e)
         {
@@ -100,48 +122,47 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
     #region Connection event handlers
 
-    private readonly Lock _lockReOpenConnection = new();
-
     /// <summary>
     /// The event handler for reconnecting when the connection is blocked
     /// </summary>
-    private void OnConnectionBlocked(object sender, ConnectionBlockedEventArgs e)
+    private async Task OnConnectionBlockedAsync(object sender, ConnectionBlockedEventArgs e)
     {
-        if (_disposed) return;
-
-        lock (_lockReOpenConnection)
-        {
-            DisposeConnectionIfExists();
-            Connect();
-        }
+        await ReconnectAsync();
     }
 
     /// <summary>
     /// The event handler for reconnecting when an exception is thrown
     /// </summary>
-    private void OnCallbackException(object sender, CallbackExceptionEventArgs e)
+    private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
-        if (_disposed) return;
-
-        lock (_lockReOpenConnection)
-        {
-            DisposeConnectionIfExists();
-            Connect();
-        }
+        await ReconnectAsync();
     }
 
     /// <summary>
     /// The event handler for reconnecting when the connection is shutdown
     /// </summary>
-    private void OnConnectionShutdown(object sender, ShutdownEventArgs reason)
+    private Task OnConnectionShutdownAsync(object sender, ShutdownEventArgs reason)
+    {
+        return ReconnectAsync();
+    }
+
+    private async Task ReconnectAsync()
     {
         if (_disposed) return;
 
-        lock (_lockReOpenConnection)
+        await _connectionGate.WaitAsync(CancellationToken.None);
+        try
         {
+            if (_disposed) return;
+
             DisposeConnectionIfExists();
-            Connect();
         }
+        finally
+        {
+            _connectionGate.Release();
+        }
+
+        await ConnectAsync(CancellationToken.None);
     }
 
     #endregion
@@ -163,8 +184,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
                 Port = _connectionOptions.HostPort!.Value,
                 VirtualHost = _connectionOptions.VirtualHost,
                 UserName = _connectionOptions.UserName,
-                Password = _connectionOptions.Password,
-                DispatchConsumersAsync = true
+                Password = _connectionOptions.Password
             };
 
             if (_connectionOptions.UseTls != true) return connectionFactory;
@@ -229,9 +249,9 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
         try
         {
-            _connection.ConnectionShutdown -= OnConnectionShutdown;
-            _connection.CallbackException -= OnCallbackException;
-            _connection.ConnectionBlocked -= OnConnectionBlocked;
+            _connection.ConnectionShutdownAsync -= OnConnectionShutdownAsync;
+            _connection.CallbackExceptionAsync -= OnCallbackExceptionAsync;
+            _connection.ConnectionBlockedAsync -= OnConnectionBlockedAsync;
 
             _connection.Dispose();
         }
@@ -266,8 +286,18 @@ internal class RabbitMqConnection : IRabbitMqConnection
     {
         if (_disposed) return;
 
-        DisposeConnectionIfExists();
-        _disposed = true;
+        _connectionGate.Wait();
+        try
+        {
+            if (_disposed) return;
+
+            DisposeConnectionIfExists();
+            _disposed = true;
+        }
+        finally
+        {
+            _connectionGate.Release();
+        }
     }
 
     ~RabbitMqConnection()

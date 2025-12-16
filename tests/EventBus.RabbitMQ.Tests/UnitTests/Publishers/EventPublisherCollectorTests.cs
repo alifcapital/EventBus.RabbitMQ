@@ -6,6 +6,7 @@ using EventBus.RabbitMQ.Publishers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Publishers;
 
@@ -117,11 +118,12 @@ public class EventPublisherCollectorTests : BaseTestEntity
 
     #endregion
 
-    #region CreateExchangeForPublishers
+    #region CreateExchangeForPublishersAsync
 
     [Test]
-    public void CreateExchangeForPublishers_CallingWithPublisherSettings_ShouldCreateExchange()
+    public async Task CreateExchangeForPublishersAsync_CallingWithPublisherSettings_ShouldCreateExchange()
     {
+        var cancellationToken = CancellationToken.None;
         var options = new Action<EventPublisherOptions>(x => { x.RoutingKey = "TestRoutingKey"; });
         _publisherCollector.AddPublisher<SimplePublishEvent>(options);
         var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
@@ -136,13 +138,25 @@ public class EventPublisherCollectorTests : BaseTestEntity
         };
         _publisherCollector.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
         var rabbitMqConnection = Substitute.For<IRabbitMqConnection>();
+        var channel = Substitute.For<IChannel>();
+        rabbitMqConnection.CreateChannelAsync(cancellationToken).Returns(Task.FromResult(channel));
+        channel.ExchangeDeclareAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<bool>(),
+                Arg.Any<IDictionary<string, object>>(),
+                Arg.Any<bool>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
         _rabbitMqConnectionManager.GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>())
             .Returns(rabbitMqConnection);
 
-        _publisherCollector.CreateExchangeForPublishers();
+        await _publisherCollector.CreateExchangeForPublishersAsync(cancellationToken);
 
         _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>());
-        rabbitMqConnection.Received(1).CreateChannel();
+        await rabbitMqConnection.Received(1).CreateChannelAsync(cancellationToken);
     }
 
     #endregion

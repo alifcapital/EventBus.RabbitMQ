@@ -76,18 +76,61 @@ public class EventConsumerServiceTests : BaseTestEntity
 
     #endregion
 
-    #region StartAndSubscribeReceiver
+    #region StartAndSubscribeReceiverAsync
 
     [Test]
-    public void StartAndSubscribeReceiver_StartingConsumerWithDefaultSetting_ShouldCreateConsumer()
+    public async Task StartAndSubscribeReceiverAsync_StartingConsumerWithDefaultSetting_ShouldCreateConsumer()
     {
-        _consumerService.CreateChannelAndSubscribeReceiver();
+        var cancellationToken = CancellationToken.None;
+        var connection = Substitute.For<IRabbitMqConnection>();
+        var channel = Substitute.For<IChannel>();
+        connection.CreateChannelAsync(cancellationToken).Returns(Task.FromResult(channel));
+        channel.ExchangeDeclareAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<bool>(),
+                Arg.Any<IDictionary<string, object>>(),
+                Arg.Any<bool>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        channel.QueueDeclareAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<bool>(),
+                Arg.Any<bool>(),
+                Arg.Any<IDictionary<string, object>>(),
+                Arg.Any<bool>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new QueueDeclareOk(queueName: "test-queue", messageCount: 0, consumerCount: 0)));
+        channel.QueueBindAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<IDictionary<string, object>>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        channel.BasicConsumeAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<bool>(),
+                Arg.Any<IDictionary<string, object>>(),
+                Arg.Any<IAsyncBasicConsumer>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("consumer-tag"));
+        _rabbitMqConnectionManager.GetOrCreateConnection(_settings.VirtualHostSettings).Returns(connection);
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(cancellationToken);
 
         var field = _consumerService.GetType()
             .GetField("_consumerChannel", BindingFlags.NonPublic | BindingFlags.Instance);
         
         Assert.That(field, Is.Not.Null);
-        var consumerChannel = field?.GetValue(_consumerService) as IModel;
+        var consumerChannel = field.GetValue(_consumerService) as IChannel;
         _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(_settings.VirtualHostSettings);
         Assert.That(consumerChannel, Is.Not.Null);
     }

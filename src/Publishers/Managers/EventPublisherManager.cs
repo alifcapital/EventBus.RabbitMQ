@@ -13,16 +13,17 @@ namespace EventBus.RabbitMQ.Publishers.Managers;
 
 internal class EventPublisherManager(
     ILogger<EventPublisherManager> logger,
-    IEventPublisherCollector eventPublisherCollector = null) : IEventPublisherManager
+    IEventPublisherCollector eventPublisherCollector = null
+) : IEventPublisherManager
 {
     private readonly ConcurrentDictionary<Guid, IPublishEvent> _eventsToPublish = [];
 
     #region PublishAsync
 
-    public async Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent)
+    public async Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent, CancellationToken cancellationToken)
         where TPublishEvent : class, IPublishEvent
     {
-        await Task.Run(() => { PublishEventToRabbitMq(publishEvent); });
+        await PublishEventToRabbitMqAsync(publishEvent, cancellationToken);
     }
 
     #endregion
@@ -69,6 +70,13 @@ internal class EventPublisherManager(
     private void PublishEventToRabbitMq<TPublishEvent>(TPublishEvent publishEvent)
         where TPublishEvent : class, IPublishEvent
     {
+        PublishEventToRabbitMqAsync(publishEvent, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    private async Task PublishEventToRabbitMqAsync<TPublishEvent>(TPublishEvent publishEvent,
+        CancellationToken cancellationToken)
+        where TPublishEvent : class, IPublishEvent
+    {
         if (eventPublisherCollector == null)
         {
             logger.LogWarning(
@@ -87,19 +95,25 @@ internal class EventPublisherManager(
 
             var traceParentId = Activity.Current?.Id;
             using var activity = EventBusTraceInstrumentation.StartActivity(
-                $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer, traceParentId);
+                $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer,
+                traceParentId);
 
-            using var channel = eventPublisherCollector.CreateRabbitMqChannel(eventSettings);
+            await using var channel =
+                await eventPublisherCollector.CreateRabbitMqChannelAsync(eventSettings, cancellationToken);
 
-            var properties = channel.CreateBasicProperties();
-            properties.MessageId = publishEvent.EventId.ToString();
-            properties.Type = eventTypeName;
+            var properties = new BasicProperties
+            {
+                MessageId = publishEvent.EventId.ToString(),
+                Type = eventTypeName
+            };
 
             var headers = new Dictionary<string, object>
             {
-                { EventStorageInvestigationTagNames.EventNamingPolicyTypeTag, eventSettings.PropertyNamingPolicy?.ToString() }
+                {
+                    EventStorageInvestigationTagNames.EventNamingPolicyTypeTag,
+                    eventSettings.PropertyNamingPolicy?.ToString()
+                }
             };
-            properties.Headers = headers;
             if (activity is not null)
                 headers.Add(EventBusTraceInstrumentation.TraceParentIdKey, activity.Id);
 
@@ -126,8 +140,15 @@ internal class EventPublisherManager(
             }
 
             var messageBody = Encoding.UTF8.GetBytes(payload);
-            channel.BasicPublish(eventSettings.VirtualHostSettings.ExchangeName, eventSettings.RoutingKey,
-                properties, messageBody);
+            properties.Headers = headers;
+            await channel.BasicPublishAsync(
+                exchange: eventSettings.VirtualHostSettings.ExchangeName,
+                routingKey: eventSettings.RoutingKey,
+                mandatory: false,
+                basicProperties: properties,
+                body: messageBody,
+                cancellationToken: cancellationToken
+            );
         }
         catch (Exception ex)
         {

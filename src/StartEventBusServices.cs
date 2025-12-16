@@ -15,12 +15,12 @@ internal class StartEventBusServices(
     ILogger<StartEventBusServices> logger)
     : BackgroundService
 {
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            publisherCollector.CreateExchangeForPublishers();
-            subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEvents();
+            await publisherCollector.CreateExchangeForPublishersAsync(stoppingToken);
+            await subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEventsAsync(stoppingToken);
             
             publisherCollector.PrintLoadedPublishersInformation();
             subscriberCollector.PrintLoadedSubscribersInformation();
@@ -29,7 +29,5 @@ internal class StartEventBusServices(
         {
             logger.LogError(e, "Error while configuring publisher and subscriber of the RabbitMQ.");
         }
-        
-        return Task.CompletedTask;
     }
 }
