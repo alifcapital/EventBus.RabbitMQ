@@ -13,7 +13,6 @@ namespace EventBus.RabbitMQ.Publishers.Managers;
 
 internal class EventPublisherManager(
     ILogger<EventPublisherManager> logger,
-    CancellationToken cancellationToken,
     IEventPublisherCollector eventPublisherCollector = null
     ) : IEventPublisherManager
 {
@@ -97,7 +96,7 @@ internal class EventPublisherManager(
             using var activity = EventBusTraceInstrumentation.StartActivity(
                 $"MQ: Publishing event '{eventTypeName}' (ID: {publishEvent.EventId})", ActivityKind.Producer, traceParentId);
 
-            using var channel = await eventPublisherCollector.CreateRabbitMqChannel(eventSettings, cancellationToken);
+            await using var channel = await eventPublisherCollector.CreateRabbitMqChannel(eventSettings, CancellationToken.None);
 
             var properties = new BasicProperties
             {
@@ -142,7 +141,7 @@ internal class EventPublisherManager(
                 mandatory: false,
                 basicProperties: properties,
                 body: messageBody,
-                cancellationToken: cancellationToken);
+                cancellationToken: CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -164,7 +163,7 @@ internal class EventPublisherManager(
     }
 
     /// <summary>
-    /// Publish all collected events to the RabbitMQ before disposing the object.
+    /// Publish all collected events to the RabbitMQ before a disposing the object.
     /// </summary>
     private void Disposing()
     {

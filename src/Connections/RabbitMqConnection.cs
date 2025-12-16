@@ -109,7 +109,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
                 _connectionGate.Release();
             }
 
-            if (connection?.IsOpen != true || _disposed)
+            if (!IsConnected)
                 throw new EventBusException(
                     $"RabbitMQ connection is not opened yet to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
 

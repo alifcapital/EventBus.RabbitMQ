@@ -23,7 +23,7 @@ public class EventPublisherManagerTests : BaseTestEntity
     {
         var logger = Substitute.For<ILogger<EventPublisherManager>>();
         _publisherCollector = Substitute.For<IEventPublisherCollector>();
-        _publisherManager = new EventPublisherManager(logger, CancellationToken.None, _publisherCollector);
+        _publisherManager = new EventPublisherManager(logger, _publisherCollector);
     }
 
     [TearDown]
@@ -68,7 +68,7 @@ public class EventPublisherManagerTests : BaseTestEntity
     public void Collect_CollectingEvent_EventShouldBeCollected()
     {
         var logger = Substitute.For<ILogger<EventPublisherManager>>();
-        _publisherManager = new EventPublisherManager(logger, CancellationToken.None);
+        _publisherManager = new EventPublisherManager(logger);
         var publishEvent = new SimplePublishEvent();
 
         _publisherManager.Collect(publishEvent);
@@ -82,7 +82,7 @@ public class EventPublisherManagerTests : BaseTestEntity
     public void Collect_CollectingSingleEventTwice_EventShouldBeCollectedOnce()
     {
         var logger = Substitute.For<ILogger<EventPublisherManager>>();
-        _publisherManager = new EventPublisherManager(logger, CancellationToken.None);
+        _publisherManager = new EventPublisherManager(logger);
         var publishEvent = new SimplePublishEvent();
 
         _publisherManager.Collect(publishEvent);
