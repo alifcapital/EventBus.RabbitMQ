@@ -1,11 +1,12 @@
 using EventBus.RabbitMQ.Extensions;
 using Microsoft.EntityFrameworkCore;
+using ServiceDefaults;
 using UsersService.Infrastructure;
 using UsersService.Repositories;
 using UsersService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddLogging(p => p.AddConsole());
+builder.AddServiceDefaults();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<UserContext>(op => op.UseNpgsql(connectionString));
@@ -43,8 +44,6 @@ builder.Services.AddRabbitMqEventBus(builder.Configuration,
 //     });
 
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddTransient<IUserService, UserService>();
 builder.Services.AddTransient<IWebHookProvider, WebHookProvider>();
@@ -55,13 +54,7 @@ using var scope = app.Services.CreateScope();
 var context = scope.ServiceProvider.GetRequiredService<UserContext>();
 context.Database.EnsureCreated();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
+app.MapDefaultEndpoints();
 app.UseAuthorization();
 
 app.MapControllers();
