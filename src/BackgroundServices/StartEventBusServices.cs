@@ -3,7 +3,7 @@ using EventBus.RabbitMQ.Subscribers.Managers;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace EventBus.RabbitMQ;
+namespace EventBus.RabbitMQ.BackgroundServices;
 
 /// <summary>
 /// The background service to start preparing publisher exchanges and subscriber queues.

@@ -2,8 +2,10 @@ using EventBus.RabbitMQ.Extensions;
 using EventStorage.Inbox.EventArgs;
 using Microsoft.EntityFrameworkCore;
 using OrdersService.Infrastructure;
+using ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 
 // Add services to the container.
 
@@ -20,9 +22,6 @@ builder.Services.AddRabbitMqEventBus(builder.Configuration,
 );
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
@@ -30,13 +29,7 @@ using var scope = app.Services.CreateScope();
 var context = scope.ServiceProvider.GetRequiredService<OrderContext>();
 context.Database.EnsureCreated();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
+app.MapDefaultEndpoints();
 app.UseAuthorization();
 
 app.MapControllers();
