@@ -13,7 +13,7 @@
         <NeutralLanguage>en</NeutralLanguage>
         <PackageId>AlifCapital.EventBus.RabbitMQ</PackageId>
         <AssemblyName>AlifCapital.EventBus.RabbitMQ</AssemblyName>
-        <Version>10.0.12</Version>
+        <Version>10.0.13</Version>
     </PropertyGroup>
 
     <ItemGroup>
