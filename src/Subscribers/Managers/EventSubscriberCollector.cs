@@ -113,9 +113,9 @@ internal class EventSubscriberCollector(
     {
         try
         {
-            var inboxAndOutboxOptions = serviceProvider.GetRequiredService<InboxAndOutboxOptions>();
+            var inboxAndOutboxSettings = serviceProvider.GetRequiredService<InboxAndOutboxSettings>();
             var eventConsumerCreator = serviceProvider.GetRequiredService<IEventConsumerServiceCreator>();
-            var shouldUseInbox = defaultSettings.UseInbox && inboxAndOutboxOptions.Inbox.IsEnabled;
+            var shouldUseInbox = defaultSettings.UseInbox && inboxAndOutboxSettings.Inbox.IsEnabled;
             
             foreach (var (_, eventInfo) in Subscribers)
             {
