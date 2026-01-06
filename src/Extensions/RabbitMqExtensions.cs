@@ -1,4 +1,5 @@
 using System.Reflection;
+using EventBus.RabbitMQ.BackgroundServices;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
@@ -67,10 +68,11 @@ public static class RabbitMqExtensions
                        new RabbitMqSettings();
         LoadDefaultRabbitMqOptions(settings, defaultOptions);
         services.AddScoped<IEventPublisherManager, EventPublisherManager>();
+        services.AddHostedService<EventBusNotifier>();
+        services.AddSingleton(settings.DefaultSettings);
 
         if (!settings.DefaultSettings.IsEnabled) return;
 
-        services.AddSingleton(settings.DefaultSettings);
         services.AddSingleton<IEventConsumerServiceCreator, EventConsumerServiceCreator>();
         services.AddSingleton<IRabbitMqConnectionManager, RabbitMqConnectionManager>();
         EventConsumerService.EventSubscribersHandled += eventSubscribersHandled;
@@ -152,23 +154,21 @@ public static class RabbitMqExtensions
     /// <exception cref="EventBusException">If there are duplicated event types with the same name</exception>
     internal static Type[] GetPublisherTypes(Assembly[] assemblies)
     {
-        if (assemblies is not null)
-        {
-            var publisherTypes = assemblies.SelectMany(a => a.GetTypes())
-                .Where(t => t is { IsClass: true, IsAbstract: false } && PublisherType.IsAssignableFrom(t)).ToArray();
+        if (assemblies is null) return [];
+        
+        var publisherTypes = assemblies.SelectMany(a => a.GetTypes())
+            .Where(t => t is { IsClass: true, IsAbstract: false } && PublisherType.IsAssignableFrom(t)).ToArray();
 
-            var duplicatedTypes = publisherTypes
-                .GroupBy(t => t.Name)
-                .Where(g => g.Count() > 1)
-                .Select(g => g.Key).ToArray();
-            if (duplicatedTypes.Any())
-                throw new EventBusException(
-                    $"There are duplicated event types to publish: {string.Join(", ", duplicatedTypes)}. Please make sure that there is only one event type with the same name.");
+        var duplicatedTypes = publisherTypes
+            .GroupBy(t => t.Name)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key).ToArray();
+        if (duplicatedTypes.Length != 0)
+            throw new EventBusException(
+                $"There are duplicated event types to publish: {string.Join(", ", duplicatedTypes)}. Please make sure that there is only one event type with the same name.");
 
-            return publisherTypes;
-        }
+        return publisherTypes;
 
-        return [];
     }
 
     private static void RegisterAllPublishers(EventPublisherCollector publisherCollector,
