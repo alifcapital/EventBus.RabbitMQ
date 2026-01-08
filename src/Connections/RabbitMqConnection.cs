@@ -43,7 +43,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
             try
             {
                 _logger.LogDebug(
-                    "RabbitMQ Client is trying to connect to the '{VirtualHost} 'virtual host of '{HostName}' RabbitMQ host",
+                    "RabbitMQ Client is trying to connect to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host",
                     _connectionOptions.VirtualHost, _connectionOptions.HostName);
 
                 var policy = Policy.Handle<SocketException>()
