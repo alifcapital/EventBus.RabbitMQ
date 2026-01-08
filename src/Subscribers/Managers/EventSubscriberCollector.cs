@@ -4,6 +4,7 @@ using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Subscribers.Consumers;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
+using EventStorage.Configurations;
 using EventStorage.Inbox.EventArgs;
 using EventStorage.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -112,7 +113,10 @@ internal class EventSubscriberCollector(
     {
         try
         {
+            var inboxAndOutboxSettings = serviceProvider.GetRequiredService<InboxAndOutboxSettings>();
             var eventConsumerCreator = serviceProvider.GetRequiredService<IEventConsumerServiceCreator>();
+            var shouldUseInbox = defaultSettings.UseInbox && inboxAndOutboxSettings.Inbox.IsEnabled;
+            
             foreach (var (_, eventInfo) in Subscribers)
             {
                 var consumerId =
@@ -120,7 +124,7 @@ internal class EventSubscriberCollector(
                 if (!_eventConsumers.TryGetValue(consumerId, value: out var eventConsumer))
                 {
                     eventConsumer =
-                        eventConsumerCreator.Create(eventInfo.Settings, serviceProvider, defaultSettings.UseInbox);
+                        eventConsumerCreator.Create(eventInfo.Settings, serviceProvider, shouldUseInbox);
                     _eventConsumers.Add(consumerId, eventConsumer);
                 }
 

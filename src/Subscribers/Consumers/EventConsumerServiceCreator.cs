@@ -5,8 +5,8 @@ namespace EventBus.RabbitMQ.Subscribers.Consumers;
 internal class EventConsumerServiceCreator : IEventConsumerServiceCreator
 {
     public IEventConsumerService Create(EventSubscriberOptions connectionOptions, IServiceProvider serviceProvider,
-        bool useInbox)
+        bool shouldUseInbox)
     {
-        return new EventConsumerService(connectionOptions, serviceProvider, useInbox);
+        return new EventConsumerService(connectionOptions, serviceProvider, shouldUseInbox);
     }
 }
