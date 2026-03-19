@@ -14,6 +14,12 @@ namespace EventBus.RabbitMQ.Connections;
 internal class RabbitMqConnection : IRabbitMqConnection
 {
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
+    private static readonly CreateChannelOptions ProbeChannelOptions = new(
+        publisherConfirmationsEnabled: false,
+        publisherConfirmationTrackingEnabled: false,
+        outstandingPublisherConfirmationsRateLimiter: null,
+        consumerDispatchConcurrency: null
+    );
 
     private readonly IConnectionFactory _connectionFactory;
     private readonly RabbitMqHostSettings _connectionOptions;
@@ -39,6 +45,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
         {
             if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
             if (IsConnected) return;
+            DisposeConnectionIfExists();
 
             try
             {
@@ -65,14 +72,21 @@ internal class RabbitMqConnection : IRabbitMqConnection
                     _connection!.ConnectionShutdownAsync += OnConnectionShutdownAsync;
                     _connection!.CallbackExceptionAsync += OnCallbackExceptionAsync;
                     _connection!.ConnectionBlockedAsync += OnConnectionBlockedAsync;
+                    await ProbeConnectionAsync(_connection, cancellationToken);
 
-                    _logger.LogInformation(
-                        "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
-                        _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
+                    if (IsConnected)
+                        _logger.LogInformation(
+                            "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
+                            _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
                 }
             }
-            catch (IOException e)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                throw;
+            }
+            catch (Exception e)
+            {
+                DisposeConnectionIfExists();
                 throw new EventBusException(e,
                     $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
             }
@@ -220,6 +234,16 @@ internal class RabbitMqConnection : IRabbitMqConnection
             throw new EventBusException(e,
                 $"Error while creating the RabbitMQ connection factory for the {_connectionOptions.VirtualHost} virtual host of {_connectionOptions.HostName}.");
         }
+    }
+
+    /// <summary>
+    /// Verifies that the opened connection is actually usable for the configured virtual host by opening a temporary channel.
+    /// </summary>
+    /// <param name="connection">The RabbitMQ connection instance to validate.</param>
+    /// <param name="cancellationToken">The cancellation token to stop the probe operation.</param>
+    private static async Task ProbeConnectionAsync(IConnection connection, CancellationToken cancellationToken)
+    {
+        await using var channel = await connection.CreateChannelAsync(ProbeChannelOptions, cancellationToken);
     }
 
     /// <summary>
