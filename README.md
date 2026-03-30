@@ -163,6 +163,8 @@ First you need to add a new section called `RabbitMQSettings` to your configurat
 "RabbitMQSettings": {
     "DefaultSettings": {
       "IsEnabled": true,
+      "UseInbox": true,
+      "UseOutbox": true,
       "HostName": "localhost",
       "HostPort": 5672,
       "VirtualHost": "users",
@@ -440,7 +442,7 @@ Enable the `UseOutbox` flag in `DefaultSettings` so that all calls to `IEventPub
 
 Both `UseOutbox: true` and `Outbox.IsEnabled: true` must be set. If `UseOutbox` is enabled but the Outbox functionality itself is disabled, the application will throw an exception at startup.
 
-When `UseOutbox` is enabled, the library registers `OutboxEventPublisherManager` as the implementation of `IEventPublisherManager`. This means all calls to `PublishAsync`, `Collect`, and `CleanCollectedEvents` are transparently delegated to the underlying `IOutboxEventManager`, storing events in the Outbox before they are dispatched to RabbitMQ.
+When `UseOutbox` is enabled, the `IEventPublisherManager` service uses the `PublishAsync` and `Collect` method of the `IOutboxEventManager` automaticly.
 
 ##### Option 2: Using `IOutboxEventManager` directly (manual)
 
