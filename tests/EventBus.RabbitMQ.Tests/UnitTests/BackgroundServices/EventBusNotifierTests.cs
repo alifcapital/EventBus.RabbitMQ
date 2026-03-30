@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using EventBus.RabbitMQ.BackgroundServices;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Exceptions;
@@ -21,6 +23,24 @@ public class EventBusNotifierTests : BaseTestEntity
 
     #endregion
 
+    #region Helpers
+
+    private static async Task InvokeExecuteAsync(EventBusNotifier notifier)
+    {
+        var method = typeof(EventBusNotifier).GetMethod("ExecuteAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        try
+        {
+            await (Task)method!.Invoke(notifier, [CancellationToken.None])!;
+        }
+        catch (TargetInvocationException ex)
+        {
+            ExceptionDispatchInfo.Capture(ex.InnerException!).Throw();
+        }
+    }
+
+    #endregion
+
     #region ExecuteAsync
 
     [Test]
@@ -30,7 +50,7 @@ public class EventBusNotifierTests : BaseTestEntity
         var eventStorageOptions = new InboxAndOutboxSettings();
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
-        await notifier.StartAsync(CancellationToken.None);
+        await InvokeExecuteAsync(notifier);
 
         _logger.Received(1).Log(
             LogLevel.Information,
@@ -50,8 +70,8 @@ public class EventBusNotifierTests : BaseTestEntity
         };
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
-        var ex = Assert.ThrowsAsync<EventBusException>(async () => await notifier.StartAsync(CancellationToken.None));
-        Assert.That(ex!.Message.StartsWith("Using an Inbox functionality is enabled"), Is.True);
+        var ex = Assert.ThrowsAsync<EventBusException>(async () => await InvokeExecuteAsync(notifier));
+        Assert.That(ex.Message.StartsWith("Using an Inbox functionality is enabled"), Is.True);
     }
 
     [Test]
@@ -64,8 +84,8 @@ public class EventBusNotifierTests : BaseTestEntity
         };
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
-        var ex = Assert.ThrowsAsync<EventBusException>(async () => await notifier.StartAsync(CancellationToken.None));
-        Assert.That(ex!.Message.StartsWith("Using an Inbox functionality is enabled"), Is.True);
+        var ex = Assert.ThrowsAsync<EventBusException>(async () => await InvokeExecuteAsync(notifier));
+        Assert.That(ex.Message.StartsWith("Using an Outbox functionality is enabled"), Is.True);
     }
 
     [Test]
@@ -79,7 +99,7 @@ public class EventBusNotifierTests : BaseTestEntity
         };
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
-        Assert.DoesNotThrowAsync(async () => await notifier.StartAsync(CancellationToken.None));
+        Assert.DoesNotThrowAsync(async () => await InvokeExecuteAsync(notifier));
     }
 
     #endregion
