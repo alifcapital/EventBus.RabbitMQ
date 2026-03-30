@@ -39,7 +39,7 @@ public class EventBusNotifierTests : BaseTestEntity
             Arg.Any<EventId>(),
             Arg.Is<object>(o => o.ToString().Contains("Since the RabbitMQ functionality is disabled, publishing and subscribing events will be skipped.")),
             null,
-            Arg.Any<Func<object, Exception?, string>>());
+            Arg.Any<Func<object, Exception, string>>());
     }
 
     [Test]
@@ -53,7 +53,7 @@ public class EventBusNotifierTests : BaseTestEntity
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
         var ex = Assert.ThrowsAsync<EventBusException>(async () => await InvokeExecuteAsync(notifier));
-        Assert.That(ex.Message.StartsWith("Using an Inbox functionality is enabled"), Is.True);
+        Assert.That(ex!.Message.StartsWith("Using an Inbox functionality is enabled"), Is.True);
     }
 
     [Test]
@@ -67,7 +67,7 @@ public class EventBusNotifierTests : BaseTestEntity
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
         var ex = Assert.ThrowsAsync<EventBusException>(async () => await InvokeExecuteAsync(notifier));
-        Assert.That(ex.Message.StartsWith("Using an Outbox functionality is enabled"), Is.True);
+        Assert.That(ex!.Message.StartsWith("Using an Outbox functionality is enabled"), Is.True);
     }
 
     [Test]
