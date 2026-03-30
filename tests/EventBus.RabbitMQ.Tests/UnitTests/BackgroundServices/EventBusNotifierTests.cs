@@ -1,4 +1,7 @@
 using EventBus.RabbitMQ.BackgroundServices;
+using EventBus.RabbitMQ.Configurations;
+using EventBus.RabbitMQ.Exceptions;
+using EventStorage.Configurations;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -18,4 +21,66 @@ public class EventBusNotifierTests : BaseTestEntity
 
     #endregion
 
+    #region ExecuteAsync
+
+    [Test]
+    public async Task ExecuteAsync_RabbitMqDisabled_ShouldLogInformation()
+    {
+        var rabbitMqOptions = new RabbitMqOptions { IsEnabled = false };
+        var eventStorageOptions = new InboxAndOutboxSettings();
+        var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
+
+        await notifier.StartAsync(CancellationToken.None);
+
+        _logger.Received(1).Log(
+            LogLevel.Information,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString().Contains("Since the RabbitMQ functionality is disabled, publishing and subscribing events will be skipped.")),
+            null,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    [Test]
+    public void ExecuteAsync_UseInboxIsTrueButInboxItselfDisabled_ShouldThrowException()
+    {
+        var rabbitMqOptions = new RabbitMqOptions { IsEnabled = true, UseInbox = true, UseOutbox = false };
+        var eventStorageOptions = new InboxAndOutboxSettings
+        {
+            Inbox = new InboxOrOutboxStructure { IsEnabled = false }
+        };
+        var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
+
+        var ex = Assert.ThrowsAsync<EventBusException>(async () => await notifier.StartAsync(CancellationToken.None));
+        Assert.That(ex!.Message.StartsWith("Using an Inbox functionality is enabled"), Is.True);
+    }
+
+    [Test]
+    public void ExecuteAsync_UseOutboxIsTrueButOutboxItselfDisabled_ShouldThrowException()
+    {
+        var rabbitMqOptions = new RabbitMqOptions { IsEnabled = true, UseInbox = false, UseOutbox = true };
+        var eventStorageOptions = new InboxAndOutboxSettings
+        {
+            Outbox = new InboxOrOutboxStructure { IsEnabled = false }
+        };
+        var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
+
+        var ex = Assert.ThrowsAsync<EventBusException>(async () => await notifier.StartAsync(CancellationToken.None));
+        Assert.That(ex!.Message.StartsWith("Using an Inbox functionality is enabled"), Is.True);
+    }
+
+    [Test]
+    public void ExecuteAsync_AllInboxAndOutboxParametersAreDisabled_ShouldNotThrow()
+    {
+        var rabbitMqOptions = new RabbitMqOptions { IsEnabled = true, UseInbox = false, UseOutbox = false };
+        var eventStorageOptions = new InboxAndOutboxSettings
+        {
+            Inbox = new InboxOrOutboxStructure { IsEnabled = false },
+            Outbox = new InboxOrOutboxStructure { IsEnabled = false }
+        };
+        var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
+
+        Assert.DoesNotThrowAsync(async () => await notifier.StartAsync(CancellationToken.None));
+    }
+
+    #endregion
 }
