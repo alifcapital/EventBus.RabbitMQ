@@ -72,7 +72,7 @@ Make sure to replace <VERSION> with the correct version of the package you want 
 Register the nuget package's necessary services to the services of DI in the Program.cs and pass the assemblies to find and load the publishers and subscribers automatically:
 
 ```
-builder.Services.AddRabbitMQEventBus(builder.Configuration, assemblies: [typeof(Program).Assembly]);
+builder.Services.AddRabbitMqEventBus(builder.Configuration, assemblies: [typeof(Program).Assembly]);
 ```
 
 ### Create and publish an event massage
@@ -341,7 +341,7 @@ By default, while serializing and deserializing properties of event, it will use
 
 Since the library is designed to work with multiple a virtual hosts of RabbitMQ, there is a way to configure each publisher and subscriber separately from the configuration file or while registering to the DI services.
 ```
-builder.Services.AddRabbitMQEventBus(builder.Configuration,
+builder.Services.AddRabbitMqEventBus(builder.Configuration,
     assemblies: [typeof(Program).Assembly],
     defaultOptions: options =>
     {
@@ -423,9 +423,28 @@ As you know, the Outbox pattern for storing all outgoing events or messages of a
 ```
 The `InboxAndOutbox` is the main section for setting of the Outbox and Inbox functionalities. The `Outbox` and `Inbox` subsections offer numerous options. For a detailed explanation on using these options, go to the [options of Inbox and Outbox sections](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections) of the EventStorage documentation.
 
-##### How to store an event in the Outbox pattern?
+There are two ways to use the Outbox pattern for publishing events.
 
-Your application is now ready to use this publisher. Inject the `IOutboxEventManager` interface from anywhere in your application, and use the `Collect` or `StoreAsync` methods to publish your `UserCreated` event.
+##### Option 1: Using the `UseOutbox` flag (automatic)
+
+Enable the `UseOutbox` flag in `DefaultSettings` so that all calls to `IEventPublisherManager.PublishAsync` and `Collect` automatically route through the Outbox — no code changes at the call site are needed.
+
+```
+"RabbitMQSettings": {
+    "DefaultSettings": {
+      "UseOutbox": true
+      //your settings
+    }
+  }
+```
+
+Both `UseOutbox: true` and `Outbox.IsEnabled: true` must be set. If `UseOutbox` is enabled but the Outbox functionality itself is disabled, the application will throw an exception at startup.
+
+When `UseOutbox` is enabled, the library registers `OutboxEventPublisherManager` as the implementation of `IEventPublisherManager`. This means all calls to `PublishAsync`, `Collect`, and `CleanCollectedEvents` are transparently delegated to the underlying `IOutboxEventManager`, storing events in the Outbox before they are dispatched to RabbitMQ.
+
+##### Option 2: Using `IOutboxEventManager` directly (manual)
+
+Inject the `IOutboxEventManager` interface from anywhere in your application and use the `Collect` or `StoreAsync` methods to store your event in the Outbox.
 
 ```
 public class UserController(IOutboxEventManager outboxEventManager) : ControllerBase
@@ -512,13 +531,15 @@ And then, set `true` to the `UseInbox` option of the `RabbitMQSettings.DefaultSe
   }
 ```
 
+Both `UseInbox: true` and `Inbox.IsEnabled: true` must be set. If `UseInbox` is enabled but the Inbox functionality itself is disabled, the application will throw an exception at startup.
+
 That's all. Now all incoming events from RabbitMQ are stored in the `Inbox` table of the database and then execute the `HandleAsync` method of your event subscriber. See the [document of creating event subscriber](https://github.com/alifcapital/EventBus.RabbitMQ?tab=readme-ov-file#create-a-subscriber-to-the-event).
 
 #### Advanced configuration of the Inbox and Outbox functionalities while registering to the DI services.
 
 Since the library is designed to  from multiple places, there is a way to configure the `Inbox` and `Outbox` functionalities from the configuration file or while registering to the DI services.
 ```
-builder.Services.AddRabbitMQEventBus(builder.Configuration,
+builder.Services.AddRabbitMqEventBus(builder.Configuration,
     assemblies: [typeof(Program).Assembly],
     defaultOptions: options =>
     {

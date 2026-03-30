@@ -285,6 +285,7 @@ builder.Services.AddRabbitMqEventBus(
     "RoutingKey": "",
     "RetryConnectionCount": 3,
     "UseInbox": false,
+    "UseOutbox": false,
     "EventNamingPolicy": "PascalCase",
     "PropertyNamingPolicy": "PascalCase",
     "UseTls": false,
@@ -331,7 +332,7 @@ builder.Services.AddRabbitMqEventBus(
 
 Unset properties in a virtual host **inherit** from `DefaultSettings` automatically. To explicitly unset a property (prevent inheritance), set it to empty string.
 
-> `IsEnabled` and `UseInbox` are **not inheritable** by virtual host settings — they only apply in `DefaultSettings`.
+> `IsEnabled`, `UseInbox`, and `UseOutbox` are **not inheritable** by virtual host settings — they only apply in `DefaultSettings`.
 
 ### Auto-computed defaults (when not configured)
 - **RoutingKey** → `{ExchangeName}.{EventName converted by EventNamingPolicy}`
@@ -347,6 +348,22 @@ Available for both `EventNamingPolicy` and `PropertyNamingPolicy`:
 ## Inbox / Outbox Integration
 
 ### Using Outbox for publishing
+
+There are two ways to use the Outbox pattern for publishing events.
+
+**Option 1 — Global `UseOutbox` flag (automatic)**
+
+Enable in config or via code:
+```json
+"RabbitMQSettings": { "DefaultSettings": { "UseOutbox": true } }
+"InboxAndOutbox":   { "Outbox": { "IsEnabled": true, "ConnectionString": "..." } }
+```
+
+Both flags must be `true`. When enabled, `IEventPublisherManager.PublishAsync` and `Collect` automatically route through the Outbox — no code changes needed at the call site. The registered implementation switches from `EventPublisherManager` to `OutboxEventPublisherManager`.
+
+If `UseOutbox: true` but `Outbox.IsEnabled: false`, the application throws `EventBusException` at startup.
+
+**Option 2 — Explicit `IOutboxEventManager` (manual)**
 
 ```csharp
 // Event must implement IPublishEvent (which inherits IOutboxEvent)
@@ -374,7 +391,7 @@ Enable in config:
 "InboxAndOutbox":   { "Inbox": { "IsEnabled": true, "ConnectionString": "..." } }
 ```
 
-Both flags must be `true`. If `UseInbox: true` but `Inbox.IsEnabled: false`, events are processed directly (no inbox), and a warning is logged at startup.
+Both flags must be `true`. If `UseInbox: true` but `Inbox.IsEnabled: false`, the application throws `EventBusException` at startup.
 
 ---
 
@@ -456,10 +473,11 @@ EventBus.RabbitMQ.sln
 │   │   └── RabbitMqConnectionManager.cs  # Connection pool keyed by host:port:vhost
 │   ├── Publishers/
 │   │   ├── Managers/
-│   │   │   ├── IEventPublisherManager.cs  # Public API: PublishAsync, Collect, CleanCollectedEvents
-│   │   │   ├── EventPublisherManager.cs   # Scoped — serializes and sends to RabbitMQ, publishes collected on Dispose
+│   │   │   ├── IEventPublisherManager.cs       # Public API: PublishAsync, Collect, CleanCollectedEvents
+│   │   │   ├── EventPublisherManager.cs        # Scoped — serializes and sends to RabbitMQ, publishes collected on Dispose
+│   │   │   ├── OutboxEventPublisherManager.cs  # Scoped — implements PublishAsync/Collect/CleanCollectedEvents to use IOutboxEventManager (UseOutbox=true)
 │   │   │   ├── IEventPublisherCollector.cs
-│   │   │   └── EventPublisherCollector.cs # Singleton — registry of publishers + channel factory
+│   │   │   └── EventPublisherCollector.cs      # Singleton — registry of publishers + channel factory
 │   │   ├── Messaging/
 │   │   │   └── MessageBrokerEventPublisher.cs # IMessageBrokerEventPublisher bridge: Outbox → RabbitMQ
 │   │   ├── Models/
@@ -507,7 +525,9 @@ EventBus.RabbitMQ.sln
 | One publisher per event type | Duplicate registration throws `EventBusException` at startup |
 | Multiple subscribers per event type | Allowed — all are invoked on receive, even for duplicate type names across namespaces |
 | `AddRabbitMqEventBus` calls `AddEventStore` internally | Never call both — second registration is skipped silently |
-| `UseInbox: true` requires `Inbox.IsEnabled: true` | Runtime exception if inbox is not enabled in EventStorage config |
+| `UseInbox: true` requires `Inbox.IsEnabled: true` | `EventBusException` thrown at startup if Inbox is not enabled in EventStorage config |
+| `UseOutbox: true` requires `Outbox.IsEnabled: true` | `EventBusException` thrown at startup if Outbox is not enabled in EventStorage config |
+| `UseOutbox: true` changes `IEventPublisherManager` impl | Registers `OutboxEventPublisherManager` instead of `EventPublisherManager`; `PublishAsync`/`Collect` route through `IOutboxEventManager` |
 | `EventTypeName` overrides `EventNamingPolicy` | If `EventTypeName` is set, naming policy is ignored for that event |
 | Subscriber event type resolved from `BasicProperties.Type` | Falls back to `RoutingKey` if type header is absent |
 | Naming policy mismatch throws | If received `event.naming-policy-type` header differs from configured, an `EventBusException` is thrown |

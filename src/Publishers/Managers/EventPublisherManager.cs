@@ -11,6 +11,9 @@ using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Publishers.Managers;
 
+/// <summary>
+/// The implementation of <see cref="IEventPublisherManager"/> to use when outbox is not enabled.
+/// </summary>
 internal class EventPublisherManager(
     ILogger<EventPublisherManager> logger,
     IEventPublisherCollector eventPublisherCollector = null
@@ -40,7 +43,7 @@ internal class EventPublisherManager(
 
     #region CleanCollectedEvents
 
-    public void CleanCollectedEvents()
+    public virtual void CleanCollectedEvents()
     {
         _eventsToPublish.Clear();
     }
