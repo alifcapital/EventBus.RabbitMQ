@@ -23,24 +23,6 @@ public class EventBusNotifierTests : BaseTestEntity
 
     #endregion
 
-    #region Helpers
-
-    private static async Task InvokeExecuteAsync(EventBusNotifier notifier)
-    {
-        var method = typeof(EventBusNotifier).GetMethod("ExecuteAsync",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        try
-        {
-            await (Task)method!.Invoke(notifier, [CancellationToken.None])!;
-        }
-        catch (TargetInvocationException ex)
-        {
-            ExceptionDispatchInfo.Capture(ex.InnerException!).Throw();
-        }
-    }
-
-    #endregion
-
     #region ExecuteAsync
 
     [Test]
@@ -100,6 +82,24 @@ public class EventBusNotifierTests : BaseTestEntity
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
         Assert.DoesNotThrowAsync(async () => await InvokeExecuteAsync(notifier));
+    }
+
+    #endregion
+
+    #region Helpers
+
+    private static async Task InvokeExecuteAsync(EventBusNotifier notifier)
+    {
+        var method = typeof(EventBusNotifier).GetMethod("ExecuteAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        try
+        {
+            await (Task)method!.Invoke(notifier, [CancellationToken.None])!;
+        }
+        catch (TargetInvocationException ex)
+        {
+            ExceptionDispatchInfo.Capture(ex.InnerException!).Throw();
+        }
     }
 
     #endregion
