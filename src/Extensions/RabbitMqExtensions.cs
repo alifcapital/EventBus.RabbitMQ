@@ -67,10 +67,12 @@ public static class RabbitMqExtensions
         var settings = configuration.GetSection(nameof(RabbitMqSettings)).Get<RabbitMqSettings>() ??
                        new RabbitMqSettings();
         LoadDefaultRabbitMqOptions(settings, defaultOptions);
+        services.AddKeyedScoped<IEventPublisherManager, EventPublisherManager>("MQ");
         if (settings.DefaultSettings.UseOutbox)
             services.AddScoped<IEventPublisherManager, OutboxEventPublisherManager>();
         else
             services.AddScoped<IEventPublisherManager, EventPublisherManager>();
+        
         services.AddHostedService<EventBusNotifier>();
         services.AddSingleton(settings.DefaultSettings);
 

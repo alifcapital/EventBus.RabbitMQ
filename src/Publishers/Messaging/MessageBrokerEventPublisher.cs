@@ -2,6 +2,7 @@ using EventBus.RabbitMQ.Publishers.Managers;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventStorage.Outbox.Models;
 using EventStorage.Outbox.Providers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace EventBus.RabbitMQ.Publishers.Messaging;
@@ -10,7 +11,7 @@ namespace EventBus.RabbitMQ.Publishers.Messaging;
 /// The implementation of the message broker event publisher to publish an event to the RabbitMQ message broker when the application is configured to use the outbox pattern.
 /// </summary>
 /// <param name="eventPublisher">The event publisher manager to publish the event to the RabbitMQ message broker.</param>
-public class MessageBrokerEventPublisher(IEventPublisherManager eventPublisher, ILogger<MessageBrokerEventPublisher> logger) : IMessageBrokerEventPublisher
+public class MessageBrokerEventPublisher([FromKeyedServices("MQ")] IEventPublisherManager eventPublisher, ILogger<MessageBrokerEventPublisher> logger) : IMessageBrokerEventPublisher
 {
     public async Task PublishAsync(IOutboxEvent outboxEvent)
     {
