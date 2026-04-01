@@ -45,7 +45,6 @@ internal class RabbitMqConnection : IRabbitMqConnection
         {
             if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
             if (IsConnected) return;
-            DisposeConnectionIfExists();
 
             try
             {
