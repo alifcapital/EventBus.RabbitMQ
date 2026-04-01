@@ -16,7 +16,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
     
     /// <summary>
-    /// Used only for a temporary probe channel to verify that the RabbitMQ connection
+    /// Used only for a temporary channel to verify that the RabbitMQ connection
     /// is actually open and usable before marking it as connected.
     /// </summary>
     private static readonly CreateChannelOptions TemporaryChannelOptions = new(
