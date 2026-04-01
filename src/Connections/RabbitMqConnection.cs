@@ -14,7 +14,12 @@ namespace EventBus.RabbitMQ.Connections;
 internal class RabbitMqConnection : IRabbitMqConnection
 {
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
-    private static readonly CreateChannelOptions ProbeChannelOptions = new(
+    
+    /// <summary>
+    /// Used only for a temporary probe channel to verify that the RabbitMQ connection
+    /// is actually open and usable before marking it as connected.
+    /// </summary>
+    private static readonly CreateChannelOptions TemporaryChannelOptions = new(
         publisherConfirmationsEnabled: false,
         publisherConfirmationTrackingEnabled: false,
         outstandingPublisherConfirmationsRateLimiter: null,
@@ -244,7 +249,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
     /// <param name="cancellationToken">Cancellation token.</param>
     private static async Task EnsureConnectionIsOpened(IConnection connection, CancellationToken cancellationToken)
     {
-        await using var channel = await connection.CreateChannelAsync(ProbeChannelOptions, cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(TemporaryChannelOptions, cancellationToken);
     }
 
     /// <summary>
