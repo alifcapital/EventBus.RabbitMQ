@@ -68,15 +68,14 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
                 if (IsConnected)
                 {
+                    await EnsureConnectionIsOpened(_connection, cancellationToken);
                     _connection!.ConnectionShutdownAsync += OnConnectionShutdownAsync;
                     _connection!.CallbackExceptionAsync += OnCallbackExceptionAsync;
                     _connection!.ConnectionBlockedAsync += OnConnectionBlockedAsync;
-                    await ProbeConnectionAsync(_connection, cancellationToken);
-
-                    if (IsConnected)
-                        _logger.LogInformation(
-                            "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
-                            _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
+                    
+                    _logger.LogInformation(
+                        "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
+                        _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -236,11 +235,14 @@ internal class RabbitMqConnection : IRabbitMqConnection
     }
 
     /// <summary>
-    /// Verifies that the opened connection is actually usable for the configured virtual host by opening a temporary channel.
+    /// Validates that the created RabbitMQ connection is actually usable by performing
+    /// a real AMQP operation. We intentionally do not rely on <see cref="IConnection.IsOpen"/>
+    /// here, because RabbitMQ client documentation notes that checking IsOpen/CloseReason
+    /// is race-prone and does not guarantee the connection will remain usable.
     /// </summary>
-    /// <param name="connection">The RabbitMQ connection instance to validate.</param>
-    /// <param name="cancellationToken">The cancellation token to stop the probe operation.</param>
-    private static async Task ProbeConnectionAsync(IConnection connection, CancellationToken cancellationToken)
+    /// <param name="connection">The created RabbitMQ connection to validate.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private static async Task EnsureConnectionIsOpened(IConnection connection, CancellationToken cancellationToken)
     {
         await using var channel = await connection.CreateChannelAsync(ProbeChannelOptions, cancellationToken);
     }
