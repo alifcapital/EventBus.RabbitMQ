@@ -1,3 +1,4 @@
+using EventBus.RabbitMQ.Instrumentation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
@@ -76,6 +77,7 @@ public static class Extensions
                     )
                     // Uncomment the following line to enable gRPC instrumentation (requires the OpenTelemetry.Instrumentation.GrpcNetClient package)
                     //.AddGrpcClientInstrumentation()
+                    .AddEventBusInstrumentation(shouldAttachEventPayload: true, shouldAttachEventHeaders: true)
 
                     .AddHttpClientInstrumentation();
             });

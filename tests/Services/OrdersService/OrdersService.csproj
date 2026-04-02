@@ -16,7 +16,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\src\EventBus.RabbitMQ.csproj" />
+<!--      <ProjectReference Include="..\..\..\src\EventBus.RabbitMQ.csproj" />-->
       <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
     </ItemGroup>
 

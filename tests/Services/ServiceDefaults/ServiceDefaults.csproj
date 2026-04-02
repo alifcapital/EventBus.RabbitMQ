@@ -8,6 +8,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\..\..\src\EventBus.RabbitMQ.csproj" />
+    </ItemGroup>
+    
+    <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
 
         <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0" />
