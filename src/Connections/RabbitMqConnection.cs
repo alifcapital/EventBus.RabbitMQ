@@ -14,6 +14,17 @@ namespace EventBus.RabbitMQ.Connections;
 internal class RabbitMqConnection : IRabbitMqConnection
 {
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
+    
+    /// <summary>
+    /// Used only for a temporary channel to verify that the RabbitMQ connection
+    /// is actually open and usable before marking it as connected.
+    /// </summary>
+    private static readonly CreateChannelOptions TemporaryChannelOptions = new(
+        publisherConfirmationsEnabled: false,
+        publisherConfirmationTrackingEnabled: false,
+        outstandingPublisherConfirmationsRateLimiter: null,
+        consumerDispatchConcurrency: null
+    );
 
     private readonly IConnectionFactory _connectionFactory;
     private readonly RabbitMqHostSettings _connectionOptions;
@@ -62,17 +73,23 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
                 if (IsConnected)
                 {
+                    await EnsureConnectionIsOpened(_connection, cancellationToken);
                     _connection!.ConnectionShutdownAsync += OnConnectionShutdownAsync;
                     _connection!.CallbackExceptionAsync += OnCallbackExceptionAsync;
                     _connection!.ConnectionBlockedAsync += OnConnectionBlockedAsync;
-
+                    
                     _logger.LogInformation(
                         "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
                         _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
                 }
             }
-            catch (IOException e)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                throw;
+            }
+            catch (Exception e)
+            {
+                DisposeConnectionIfExists();
                 throw new EventBusException(e,
                     $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
             }
@@ -220,6 +237,19 @@ internal class RabbitMqConnection : IRabbitMqConnection
             throw new EventBusException(e,
                 $"Error while creating the RabbitMQ connection factory for the {_connectionOptions.VirtualHost} virtual host of {_connectionOptions.HostName}.");
         }
+    }
+
+    /// <summary>
+    /// Validates that the created RabbitMQ connection is actually usable by performing
+    /// a real AMQP operation. We intentionally do not rely on <see cref="IConnection.IsOpen"/>
+    /// here, because RabbitMQ client documentation notes that checking IsOpen/CloseReason
+    /// is race-prone and does not guarantee the connection will remain usable.
+    /// </summary>
+    /// <param name="connection">The created RabbitMQ connection to validate.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private static async Task EnsureConnectionIsOpened(IConnection connection, CancellationToken cancellationToken)
+    {
+        await using var channel = await connection.CreateChannelAsync(TemporaryChannelOptions, cancellationToken);
     }
 
     /// <summary>
