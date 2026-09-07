@@ -188,8 +188,19 @@ internal class EventConsumerService : IEventConsumerService
                 cancellationToken: cancellationToken);
 
         channel.CallbackExceptionAsync += OnCallbackExceptionAsync;
+        channel.ChannelShutdownAsync += OnChannelShutdownAsync;
 
         return channel;
+    }
+
+    /// <summary>
+    /// Unsubscribes this instance's handlers from the channel's events, so disposing the channel ourselves
+    /// doesn't cause a re-entrant call into <see cref="OnChannelShutdownAsync"/>.
+    /// </summary>
+    private void UnsubscribeChannelEvents(IChannel channel)
+    {
+        channel.CallbackExceptionAsync -= OnCallbackExceptionAsync;
+        channel.ChannelShutdownAsync -= OnChannelShutdownAsync;
     }
 
     /// <summary>
@@ -208,11 +219,13 @@ internal class EventConsumerService : IEventConsumerService
 
         try
         {
-            _logger.LogWarning(e.Exception, "Recreating RabbitMQ consumer channel after exception");
+            _logger.LogWarning(e.Exception,
+                "Recreating RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host after exception.",
+                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
 
             try
             {
-                _consumerChannel.CallbackExceptionAsync -= OnCallbackExceptionAsync;
+                UnsubscribeChannelEvents(_consumerChannel);
                 _consumerChannel.Dispose();
             }
             catch (Exception ex)
@@ -222,6 +235,44 @@ internal class EventConsumerService : IEventConsumerService
                 _logger.LogError(ex, message);
                 throw new EventBusException(ex, message);
             }
+        }
+        finally
+        {
+            _reopenChannelGate.Release();
+        }
+
+        await CreateChannelAndSubscribeReceiverAsync(_serviceCancellationToken);
+    }
+
+    /// <summary>
+    /// The event handler for recreating the consumer channel when it is shut down unexpectedly, e.g. because the
+    /// underlying RabbitMQ connection dropped and was reconnected by <see cref="IRabbitMqConnection"/>.
+    /// </summary>
+    private async Task OnChannelShutdownAsync(object sender, ShutdownEventArgs reason)
+    {
+        try
+        {
+            await _reopenChannelGate.WaitAsync(_serviceCancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        try
+        {
+            _logger.LogWarning(
+                "Recreating RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host after it was shut down. Reason: {Reason}",
+                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, reason);
+
+            UnsubscribeChannelEvents(_consumerChannel);
+            _consumerChannel.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Error while disposing the shut down RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host.",
+                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
         }
         finally
         {
