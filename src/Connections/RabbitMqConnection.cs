@@ -104,7 +104,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
     #region Create channel
 
-    public async Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken)
+    public async Task<IChannel> CreateChannelAsync(bool publisherConfirmation, CancellationToken cancellationToken)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
 
@@ -118,8 +118,8 @@ internal class RabbitMqConnection : IRabbitMqConnection
                     $"RabbitMQ connection is not opened yet to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
 
             var channelOptions = new CreateChannelOptions(
-                publisherConfirmationsEnabled: false,
-                publisherConfirmationTrackingEnabled: false,
+                publisherConfirmationsEnabled: publisherConfirmation,
+                publisherConfirmationTrackingEnabled: publisherConfirmation,
                 outstandingPublisherConfirmationsRateLimiter: null,
                 consumerDispatchConcurrency: null
             );

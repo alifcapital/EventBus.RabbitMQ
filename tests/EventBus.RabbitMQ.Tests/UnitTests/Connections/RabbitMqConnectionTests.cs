@@ -84,7 +84,57 @@ public class RabbitMqConnectionTests : BaseTestEntity
 
     #endregion
 
+    #region CreateChannelAsync
+
+    [Test]
+    public async Task CreateChannelAsync_PassingEnabledPublisherConfirmation_ShouldCreateChannelWithEnabledPublisherConfirmation()
+    {
+        var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
+
+        await _connection.CreateChannelAsync(publisherConfirmation: true, CancellationToken.None);
+
+        var channelOptions = createdChannelOptions.Last();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(channelOptions.PublisherConfirmationsEnabled, Is.True);
+            Assert.That(channelOptions.PublisherConfirmationTrackingEnabled, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task CreateChannelAsync_PassingDisabledPublisherConfirmation_ShouldCreateChannelWithDisabledPublisherConfirmation()
+    {
+        var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
+
+        await _connection.CreateChannelAsync(publisherConfirmation: false, CancellationToken.None);
+
+        var channelOptions = createdChannelOptions.Last();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(channelOptions.PublisherConfirmationsEnabled, Is.False);
+            Assert.That(channelOptions.PublisherConfirmationTrackingEnabled, Is.False);
+        }
+    }
+
+    #endregion
+
     #region Helpers
+
+    private List<CreateChannelOptions> CreateOpenedConnectionForCreatingChannel()
+    {
+        var createdChannelOptions = new List<CreateChannelOptions>();
+        var connectionFactory = Substitute.For<IConnectionFactory>();
+        var openedConnection = CreateOpenedConnection(options =>
+        {
+            createdChannelOptions.Add(options);
+            return Task.FromResult(Substitute.For<IChannel>());
+        });
+        connectionFactory.CreateConnectionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(openedConnection));
+        SetPrivateField("_connectionFactory", connectionFactory);
+
+        return createdChannelOptions;
+    }
 
     private static IConnection CreateOpenedConnection(Func<CreateChannelOptions, Task<IChannel>> channelFactory)
     {
