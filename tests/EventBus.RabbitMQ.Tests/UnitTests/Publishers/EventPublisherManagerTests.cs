@@ -60,6 +60,29 @@ public class EventPublisherManagerTests : BaseTestEntity
             Arg.Any<BasicProperties>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>());
     }
 
+    [Test]
+    public async Task PublishAsync_PublishingOneEvent_EventShouldBePublishedAsPersistent()
+    {
+        var cancellationToken = CancellationToken.None;
+        var publishEvent = new SimplePublishEvent();
+        var eventSettings = new EventPublisherOptions();
+        var virtualHostSettings = new RabbitMqHostSettings()
+        {
+            VirtualHost = "TestVirtualHost",
+            ExchangeName = "TestExchangeName"
+        };
+        eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, publishEvent.GetType().Name);
+        _publisherCollector.GetPublisherSettings(publishEvent).Returns(eventSettings);
+        var channel = Substitute.For<IChannel>();
+        _publisherCollector.CreateRabbitMqChannelAsync(eventSettings, cancellationToken).Returns(Task.FromResult(channel));
+
+        await _publisherManager.PublishAsync(publishEvent, cancellationToken);
+
+        await channel.Received(1).BasicPublishAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(),
+            Arg.Is<BasicProperties>(properties => properties.DeliveryMode == DeliveryModes.Persistent),
+            Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>());
+    }
+
     #endregion
 
     #region Collect

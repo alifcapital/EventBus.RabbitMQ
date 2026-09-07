@@ -255,7 +255,10 @@ It can be enabled in the `DefaultSettings` to use it for all published events, o
 Note what the acknowledgment of the broker does and does not guarantee:
 * It guarantees that the broker received the event and finished routing it.
 * It does **not** guarantee that the event was routed to a queue. When no binding of the exchange matches the routing key of the event, the broker drops the event and still acknowledges it. So a missing queue, a wrong `RoutingKey`, or a not yet deployed subscriber are not detected by this option, and the event will be marked as published in the Outbox table.
-* It does **not** guarantee that the event survives a restart of the broker, since events are published as non-persistent.
+* It guarantees that the event survives a restart of the broker only when the event is routed to a durable queue, since all events are published with the persistent delivery mode.
+
+##### Are the published events persistent?
+Yes, all events are published with the persistent delivery mode (`DeliveryMode = Persistent`), so the broker writes them to the disk and they are not lost after a restart of the broker. To really survive a restart, the queue the event is routed to must be durable as well, which is how the queues of this library are declared.
 
 ##### Can we use the TLS protocol while publishing events or subscribing to the events?
 Yes, we can. For that we need to just enable the using the TLS protocol by adding the options below to the `DefaultSettings` if we want to use that in all events, or add them to the specific virtual host to use from the publishing or subscribing event:
