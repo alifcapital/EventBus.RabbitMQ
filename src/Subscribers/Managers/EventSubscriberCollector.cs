@@ -115,7 +115,7 @@ internal class EventSubscriberCollector(
         {
             var eventConsumerCreator = serviceProvider.GetRequiredService<IEventConsumerServiceCreator>();
             var shouldUseInbox = defaultSettings.UseInbox;
-            
+
             foreach (var (_, eventInfo) in Subscribers)
             {
                 var consumerId =
@@ -131,18 +131,7 @@ internal class EventSubscriberCollector(
             }
 
             foreach (var (_, consumer) in _eventConsumers)
-            {
-                try
-                {
-                    await consumer.CreateChannelAndSubscribeReceiverAsync(cancellationToken);
-                }
-                catch (Exception e)
-                {
-                    var consumerSettings = consumer.GetEventSubscriberSettings();
-                    _logger.LogError(e, "Error while creating a channel or subscribing a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host.",
-                        consumerSettings.QueueName, consumerSettings.VirtualHostSettings.VirtualHost);
-                }
-            }
+                await consumer.CreateChannelAndSubscribeReceiverAsync(cancellationToken);
         }
         catch (Exception e)
         {

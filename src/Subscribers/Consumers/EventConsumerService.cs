@@ -27,12 +27,12 @@ internal class EventConsumerService : IEventConsumerService
     private readonly ILogger<EventConsumerService> _logger;
     private readonly IRabbitMqConnection _connection;
     private IChannel _consumerChannel;
+    private CancellationToken _serviceCancellationToken;
 
     /// <summary>
     /// Dictionary collection to store all events and event handlers information
     /// </summary>
     private readonly Dictionary<string, SubscribersInformation> _subscribers = [];
-    private CancellationToken _serviceCancellationToken;
 
     /// <summary>
     /// The event to be executed after executing all subscribers of the event.
@@ -68,11 +68,70 @@ internal class EventConsumerService : IEventConsumerService
     private readonly SemaphoreSlim _reopenChannelGate = new(1, 1);
 
     /// <summary>
-    /// Starts receiving events by creating a consumer
+    /// The delay between retry attempts when the channel fails to be created and the receiver fails to subscribe.
+    /// </summary>
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Starts receiving events by creating a consumer. If it fails, the failure is logged and a background retry
+    /// loop is started, retrying every <see cref="RetryDelay"/> until it succeeds or the cancellation is requested.
     /// </summary>
     public async Task CreateChannelAndSubscribeReceiverAsync(CancellationToken cancellationToken)
     {
         _serviceCancellationToken = cancellationToken;
+        try
+        {
+            await CreateChannelAndStartConsumingAsync(cancellationToken);
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e,
+                "Error while creating a channel and subscribing to a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host. Will keep retrying every {RetryDelay} until it succeeds.",
+                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, RetryDelay);
+
+            _ = RetryCreateChannelAndSubscribeReceiverAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Keeps retrying to create a channel and subscribe the receiver every <see cref="RetryDelay"/> until it
+    /// succeeds or the cancellation is requested.
+    /// </summary>
+    private async Task RetryCreateChannelAndSubscribeReceiverAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(RetryDelay, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            try
+            {
+                await CreateChannelAndStartConsumingAsync(cancellationToken);
+                _logger.LogInformation(
+                    "Successfully created a channel and subscribed a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host after retrying.",
+                    _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+                return;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e,
+                    "Retry failed while creating a channel and subscribing to a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host. Will retry again in {RetryDelay}.",
+                    _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, RetryDelay);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Creates the consumer channel and starts consuming from the queue. Throws if either step fails.
+    /// </summary>
+    private async Task CreateChannelAndStartConsumingAsync(CancellationToken cancellationToken)
+    {
         try
         {
             _consumerChannel = await CreateConsumerChannelAsync(cancellationToken);
@@ -92,9 +151,9 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     /// <summary>
-    /// To create channel for consumer. If the channel is disconnected, it will try to create a new one.
+    /// To create a channel for consumer. If the channel is disconnected, it will try to create a new one.
     /// </summary>
-    /// <returns>Returns create channel</returns>
+    /// <returns>Returns create a channel</returns>
     private async Task<IChannel> CreateConsumerChannelAsync(CancellationToken cancellationToken)
     {
         _logger.LogTrace("Creating RabbitMQ consumer channel");
@@ -138,7 +197,6 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
-        var shouldRecreate = false;
         try
         {
             await _reopenChannelGate.WaitAsync(_serviceCancellationToken);
@@ -156,7 +214,6 @@ internal class EventConsumerService : IEventConsumerService
             {
                 _consumerChannel.CallbackExceptionAsync -= OnCallbackExceptionAsync;
                 _consumerChannel.Dispose();
-                shouldRecreate = true;
             }
             catch (Exception ex)
             {
@@ -171,8 +228,7 @@ internal class EventConsumerService : IEventConsumerService
             _reopenChannelGate.Release();
         }
 
-        if (shouldRecreate)
-            await CreateChannelAndSubscribeReceiverAsync(_serviceCancellationToken);
+        await CreateChannelAndSubscribeReceiverAsync(_serviceCancellationToken);
     }
 
     #endregion
@@ -355,15 +411,6 @@ internal class EventConsumerService : IEventConsumerService
         }
 
         #endregion
-    }
-
-    #endregion
-
-    #region GetEventSubscriberSettings
-
-    public EventSubscriberOptions GetEventSubscriberSettings()
-    {
-        return _connectionOptions;
     }
 
     #endregion
