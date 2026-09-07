@@ -193,15 +193,9 @@ internal class EventConsumerService : IEventConsumerService
         return channel;
     }
 
-    /// <summary>
-    /// Unsubscribes this instance's handlers from the channel's events, so disposing the channel ourselves
-    /// doesn't cause a re-entrant call into <see cref="OnChannelShutdownAsync"/>.
-    /// </summary>
-    private void UnsubscribeChannelEvents(IChannel channel)
-    {
-        channel.CallbackExceptionAsync -= OnCallbackExceptionAsync;
-        channel.ChannelShutdownAsync -= OnChannelShutdownAsync;
-    }
+    #endregion
+
+    #region Channel events
 
     /// <summary>
     /// The event handler for recreating the consumer channel when an exception is thrown.
@@ -280,6 +274,16 @@ internal class EventConsumerService : IEventConsumerService
         }
 
         await CreateChannelAndSubscribeReceiverAsync(_serviceCancellationToken);
+    }
+
+    /// <summary>
+    /// Unsubscribes this instance's handlers from the channel's events, so disposing the channel ourselves
+    /// doesn't cause a re-entrant call into <see cref="OnChannelShutdownAsync"/>.
+    /// </summary>
+    private void UnsubscribeChannelEvents(IChannel channel)
+    {
+        channel.CallbackExceptionAsync -= OnCallbackExceptionAsync;
+        channel.ChannelShutdownAsync -= OnChannelShutdownAsync;
     }
 
     #endregion
