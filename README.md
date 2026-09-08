@@ -175,7 +175,7 @@ First you need to add a new section called `RabbitMQSettings` to your configurat
       "QueueName": "users_queue",
       "RoutingKey": "users.created",
       "RetryConnectionCount": 5,
-      "PublisherConfirmation": false,
+      "PublisherConfirmation": true,
       "EventNamingPolicy": "SnakeCaseLower",
       "PropertyNamingPolicy": "CamelCase",
       "QueueArguments": {
@@ -231,22 +231,22 @@ A section may have the following subsections: <br/>
 `VirtualHostSettings` - adding virtual host configuration by given a key to use them from the publishers and subscribers. If we just add a new virtual host and not set all parameters, the not assigned properties automatically get/inherit a value from the default settings. If we don't want to use the default settings, we need to just set empty to the property to avoid auto-set. Then we can use the registered a virtual host from any subscribers or publishers by passing a `VirtualHostKey` value. Note: In the each `VirtualHostSettings` item, we are able to overwrite each option of the `DefaultSettings` except the `IsEnabled` and `UseInbox` options if needed.<br/>
 
 ##### Can we make sure the published event is received by the RabbitMQ broker?
-Yes, we can, by enabling the `PublisherConfirmation` option. By default, it is set to `false`, that means the event is published in a fire-and-forget way, and the publishing is finished as soon as the event is written to the socket. If we set it to `true`, the channel waits for the acknowledgment of the RabbitMQ broker for each published event, and throws an exception if the broker does not acknowledge that event. It makes the publishing slower, but guarantees that the broker really received the event.
+Yes, that is the default behavior, provided by the `PublisherConfirmation` option. By default, it is set to `true`, that means the channel waits for the acknowledgment of the RabbitMQ broker for each published event, and throws an exception if the broker does not acknowledge that event. If we set it to `false`, the event is published in a fire-and-forget way, and the publishing is finished as soon as the event is written to the socket. That makes the publishing faster, but the event may be lost without any error.
 
 The option affects only the channels which are used for publishing an event. The channels of subscribers/consumers are always created without the publisher confirmation, since they never publish an event.
 
-It can be enabled in the `DefaultSettings` to use it for all published events, or in a specific virtual host to use it only from the publishers of that virtual host:
+It can be disabled in the `DefaultSettings` to turn it off for all published events, or in a specific virtual host to turn it off only for the publishers of that virtual host:
 
 ```
 "RabbitMQSettings": {
     "DefaultSettings": {
       //your settings
-      "PublisherConfirmation": false
+      "PublisherConfirmation": true
     },
     "VirtualHostSettings": {
       "payments": {
         "VirtualHost": "payments",
-        "PublisherConfirmation": true
+        "PublisherConfirmation": false
       }
     }
   }

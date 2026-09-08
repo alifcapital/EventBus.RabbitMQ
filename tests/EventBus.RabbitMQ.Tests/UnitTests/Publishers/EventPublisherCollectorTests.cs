@@ -156,7 +156,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         await _publisherCollector.CreateExchangeForPublishersAsync(cancellationToken);
 
         _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>());
-        await rabbitMqConnection.Received(1).CreatePublisherChannelAsync(publisherConfirmation: false, cancellationToken);
+        await rabbitMqConnection.Received(1).CreatePublisherChannelAsync(publisherConfirmation: true, cancellationToken);
     }
 
     #endregion
@@ -183,7 +183,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     [Test]
-    public async Task CreateRabbitMqChannelAsync_WhenPublisherConfirmationIsNotSetForVirtualHost_ShouldCreateChannelWithoutPublisherConfirmation()
+    public async Task CreateRabbitMqChannelAsync_WhenPublisherConfirmationIsDisabledForVirtualHost_ShouldCreateChannelWithoutPublisherConfirmation()
     {
         // Arrange
         var cancellationToken = CancellationToken.None;
@@ -192,7 +192,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
             .Returns(Task.FromResult(Substitute.For<IChannel>()));
         _rabbitMqConnectionManager.GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>())
             .Returns(rabbitMqConnection);
-        var settings = CreatePublisherOptions(publisherConfirmation: null);
+        var settings = CreatePublisherOptions(publisherConfirmation: false);
 
         // Act
         await _publisherCollector.CreateRabbitMqChannelAsync(settings, cancellationToken);

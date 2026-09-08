@@ -46,9 +46,9 @@ internal static class RabbitMqOptionsConstant
     const int RetryConnectionCount = 3;
 
     /// <summary>
-    /// Indicates whether the publisher confirmation should be enabled while publishing an event. Default value is "false".
+    /// Indicates whether the publisher confirmation should be enabled while publishing an event. Default value is "true".
     /// </summary>
-    const bool PublisherConfirmation = false;
+    const bool PublisherConfirmation = true;
 
     /// <summary>
     /// Indicates whether TLS/SSL should be used for the connection.
