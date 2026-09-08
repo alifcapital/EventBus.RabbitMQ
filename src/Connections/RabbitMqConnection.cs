@@ -163,6 +163,11 @@ internal class RabbitMqConnection : IRabbitMqConnection
         return ReconnectAsync();
     }
 
+    /// <summary>
+    /// The delay between retry attempts when reconnecting fails.
+    /// </summary>
+    private static readonly TimeSpan ReconnectRetryDelay = TimeSpan.FromMinutes(1);
+
     private async Task ReconnectAsync()
     {
         if (_disposed) return;
@@ -179,7 +184,60 @@ internal class RabbitMqConnection : IRabbitMqConnection
             _connectionGate.Release();
         }
 
-        await ConnectAsync(CancellationToken.None);
+        try
+        {
+            await ConnectAsync(CancellationToken.None);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e,
+                "Error while reconnecting to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host. Will keep retrying every {RetryDelay} until it succeeds.",
+                _connectionOptions.VirtualHost, _connectionOptions.HostName, ReconnectRetryDelay);
+
+            _ = RetryReconnectAsync();
+        }
+    }
+
+    /// <summary>
+    /// Keeps retrying to reconnect every <see cref="ReconnectRetryDelay"/> until it succeeds or the connection is disposed.
+    /// </summary>
+    private async Task RetryReconnectAsync()
+    {
+        while (!_disposed)
+        {
+            try
+            {
+                await Task.Delay(ReconnectRetryDelay);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            if (_disposed) break;
+
+            try
+            {
+                await ConnectAsync(CancellationToken.None);
+                _logger.LogInformation(
+                    "Successfully reconnected to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host after retrying.",
+                    _connectionOptions.VirtualHost, _connectionOptions.HostName);
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e,
+                    "Retry failed while reconnecting to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host. Will retry again in {RetryDelay}.",
+                    _connectionOptions.VirtualHost, _connectionOptions.HostName, ReconnectRetryDelay);
+            }
+        }
     }
 
     #endregion
