@@ -104,7 +104,34 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
     #region Create channel
 
-    public async Task<IChannel> CreateChannelAsync(bool publisherConfirmation, CancellationToken cancellationToken)
+    public Task<IChannel> CreateConsumerChannelAsync(CancellationToken cancellationToken)
+    {
+        return CreateChannelAsync(
+            publisherConfirmationsEnabled: false,
+            publisherConfirmationTrackingEnabled: false,
+            cancellationToken);
+    }
+
+    public Task<IChannel> CreatePublisherChannelAsync(bool publisherConfirmation,
+        CancellationToken cancellationToken)
+    {
+        return CreateChannelAsync(
+            publisherConfirmationsEnabled: publisherConfirmation,
+            publisherConfirmationTrackingEnabled: publisherConfirmation,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates a channel with the given publisher confirmation options after opening the connection.
+    /// </summary>
+    /// <param name="publisherConfirmationsEnabled">Whether the broker should acknowledge each published event.</param>
+    /// <param name="publisherConfirmationTrackingEnabled">Whether the client should track the acknowledgments of the published events.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private async Task<IChannel> CreateChannelAsync(
+        bool publisherConfirmationsEnabled,
+        bool publisherConfirmationTrackingEnabled,
+        CancellationToken cancellationToken
+    )
     {
         if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
 
@@ -118,8 +145,8 @@ internal class RabbitMqConnection : IRabbitMqConnection
                     $"RabbitMQ connection is not opened yet to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
 
             var channelOptions = new CreateChannelOptions(
-                publisherConfirmationsEnabled: publisherConfirmation,
-                publisherConfirmationTrackingEnabled: publisherConfirmation,
+                publisherConfirmationsEnabled: publisherConfirmationsEnabled,
+                publisherConfirmationTrackingEnabled: publisherConfirmationTrackingEnabled,
                 outstandingPublisherConfirmationsRateLimiter: null,
                 consumerDispatchConcurrency: null
             );

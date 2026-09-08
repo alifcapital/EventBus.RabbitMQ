@@ -139,7 +139,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         _publisherCollector.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
         var rabbitMqConnection = Substitute.For<IRabbitMqConnection>();
         var channel = Substitute.For<IChannel>();
-        rabbitMqConnection.CreateChannelAsync(Arg.Any<bool>(), cancellationToken).Returns(Task.FromResult(channel));
+        rabbitMqConnection.CreatePublisherChannelAsync(Arg.Any<bool>(), cancellationToken).Returns(Task.FromResult(channel));
         channel.ExchangeDeclareAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
@@ -156,7 +156,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         await _publisherCollector.CreateExchangeForPublishersAsync(cancellationToken);
 
         _rabbitMqConnectionManager.Received(1).GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>());
-        await rabbitMqConnection.Received(1).CreateChannelAsync(publisherConfirmation: false, cancellationToken);
+        await rabbitMqConnection.Received(1).CreatePublisherChannelAsync(publisherConfirmation: false, cancellationToken);
     }
 
     #endregion
@@ -169,7 +169,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         // Arrange
         var cancellationToken = CancellationToken.None;
         var rabbitMqConnection = Substitute.For<IRabbitMqConnection>();
-        rabbitMqConnection.CreateChannelAsync(Arg.Any<bool>(), cancellationToken)
+        rabbitMqConnection.CreatePublisherChannelAsync(Arg.Any<bool>(), cancellationToken)
             .Returns(Task.FromResult(Substitute.For<IChannel>()));
         _rabbitMqConnectionManager.GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>())
             .Returns(rabbitMqConnection);
@@ -179,7 +179,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         await _publisherCollector.CreateRabbitMqChannelAsync(settings, cancellationToken);
 
         // Assert
-        await rabbitMqConnection.Received(1).CreateChannelAsync(publisherConfirmation: true, cancellationToken);
+        await rabbitMqConnection.Received(1).CreatePublisherChannelAsync(publisherConfirmation: true, cancellationToken);
     }
 
     [Test]
@@ -188,7 +188,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         // Arrange
         var cancellationToken = CancellationToken.None;
         var rabbitMqConnection = Substitute.For<IRabbitMqConnection>();
-        rabbitMqConnection.CreateChannelAsync(Arg.Any<bool>(), cancellationToken)
+        rabbitMqConnection.CreatePublisherChannelAsync(Arg.Any<bool>(), cancellationToken)
             .Returns(Task.FromResult(Substitute.For<IChannel>()));
         _rabbitMqConnectionManager.GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>())
             .Returns(rabbitMqConnection);
@@ -198,7 +198,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         await _publisherCollector.CreateRabbitMqChannelAsync(settings, cancellationToken);
 
         // Assert
-        await rabbitMqConnection.Received(1).CreateChannelAsync(publisherConfirmation: false, cancellationToken);
+        await rabbitMqConnection.Received(1).CreatePublisherChannelAsync(publisherConfirmation: false, cancellationToken);
     }
 
     #endregion

@@ -84,7 +84,7 @@ public class EventConsumerServiceTests : BaseTestEntity
         var cancellationToken = CancellationToken.None;
         var connection = Substitute.For<IRabbitMqConnection>();
         var channel = Substitute.For<IChannel>();
-        connection.CreateChannelAsync(publisherConfirmation: false, cancellationToken).Returns(Task.FromResult(channel));
+        connection.CreateConsumerChannelAsync(cancellationToken).Returns(Task.FromResult(channel));
         channel.ExchangeDeclareAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),

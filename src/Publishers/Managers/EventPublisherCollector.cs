@@ -136,7 +136,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         var connection = _rabbitMqConnectionManager.GetOrCreateConnection(settings.VirtualHostSettings);
         var publisherConfirmation = settings.VirtualHostSettings.PublisherConfirmation == true;
 
-        return connection.CreateChannelAsync(publisherConfirmation, cancellationToken);
+        return connection.CreatePublisherChannelAsync(publisherConfirmation, cancellationToken);
     }
 
     #endregion

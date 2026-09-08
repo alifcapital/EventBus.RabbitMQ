@@ -84,14 +84,14 @@ public class RabbitMqConnectionTests : BaseTestEntity
 
     #endregion
 
-    #region CreateChannelAsync
+    #region CreatePublisherChannelAsync
 
     [Test]
-    public async Task CreateChannelAsync_PassingEnabledPublisherConfirmation_ShouldCreateChannelWithEnabledPublisherConfirmation()
+    public async Task CreatePublisherChannelAsync_PassingEnabledPublisherConfirmation_ShouldCreateChannelWithEnabledPublisherConfirmation()
     {
         var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
 
-        await _connection.CreateChannelAsync(publisherConfirmation: true, CancellationToken.None);
+        await _connection.CreatePublisherChannelAsync(publisherConfirmation: true, CancellationToken.None);
 
         var channelOptions = createdChannelOptions.Last();
         using (Assert.EnterMultipleScope())
@@ -102,11 +102,30 @@ public class RabbitMqConnectionTests : BaseTestEntity
     }
 
     [Test]
-    public async Task CreateChannelAsync_PassingDisabledPublisherConfirmation_ShouldCreateChannelWithDisabledPublisherConfirmation()
+    public async Task CreatePublisherChannelAsync_PassingDisabledPublisherConfirmation_ShouldCreateChannelWithDisabledPublisherConfirmation()
     {
         var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
 
-        await _connection.CreateChannelAsync(publisherConfirmation: false, CancellationToken.None);
+        await _connection.CreatePublisherChannelAsync(publisherConfirmation: false, CancellationToken.None);
+
+        var channelOptions = createdChannelOptions.Last();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(channelOptions.PublisherConfirmationsEnabled, Is.False);
+            Assert.That(channelOptions.PublisherConfirmationTrackingEnabled, Is.False);
+        }
+    }
+
+    #endregion
+
+    #region CreateConsumerChannelAsync
+
+    [Test]
+    public async Task CreateConsumerChannelAsync_CreatingChannelForConsumer_ShouldCreateChannelWithDisabledPublisherConfirmation()
+    {
+        var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
+
+        await _connection.CreateConsumerChannelAsync(CancellationToken.None);
 
         var channelOptions = createdChannelOptions.Last();
         using (Assert.EnterMultipleScope())

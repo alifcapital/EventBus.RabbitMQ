@@ -99,8 +99,7 @@ internal class EventConsumerService : IEventConsumerService
     {
         _logger.LogTrace("Creating RabbitMQ consumer channel");
 
-        //The publisher confirmation is disabled, since the consumer channel is used only for receiving events.
-        var channel = await _connection.CreateChannelAsync(publisherConfirmation: false, cancellationToken);
+        var channel = await _connection.CreateConsumerChannelAsync(cancellationToken);
 
         var virtualHostSettings = _connectionOptions.VirtualHostSettings;
         await channel.ExchangeDeclareAsync(
