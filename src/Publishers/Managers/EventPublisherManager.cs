@@ -107,7 +107,8 @@ internal class EventPublisherManager(
             var properties = new BasicProperties
             {
                 MessageId = publishEvent.EventId.ToString(),
-                Type = eventTypeName
+                Type = eventTypeName,
+                DeliveryMode = DeliveryModes.Persistent
             };
 
             var headers = new Dictionary<string, object>

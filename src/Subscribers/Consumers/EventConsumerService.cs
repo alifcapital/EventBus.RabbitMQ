@@ -158,7 +158,7 @@ internal class EventConsumerService : IEventConsumerService
     {
         _logger.LogTrace("Creating RabbitMQ consumer channel");
 
-        var channel = await _connection.CreateChannelAsync(cancellationToken);
+        var channel = await _connection.CreateConsumerChannelAsync(cancellationToken);
 
         var virtualHostSettings = _connectionOptions.VirtualHostSettings;
         await channel.ExchangeDeclareAsync(

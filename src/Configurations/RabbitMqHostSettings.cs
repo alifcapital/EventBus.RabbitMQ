@@ -71,6 +71,11 @@ public class RabbitMqHostSettings
     public int RetryConnectionCount { get; set; }
 
     /// <summary>
+    /// Indicates whether the publisher confirmation should be enabled while publishing an event. When it is set to true, the created channel waits for the acknowledgment of the RabbitMQ broker for each published event, and throws an exception if the event is not acknowledged. Default value is "true".
+    /// </summary>
+    public bool? PublisherConfirmation { get; set; }
+
+    /// <summary>
     /// Naming police for serializing and deserializing properties of Event. Default value is "PascalCase". It can be one of "PascalCase", "CamelCase", "SnakeCaseLower", "SnakeCaseUpper", "KebabCaseLower", or "KebabCaseUpper".
     /// </summary>
     public NamingPolicyType? PropertyNamingPolicy { get; init; }
