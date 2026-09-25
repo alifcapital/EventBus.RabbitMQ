@@ -84,7 +84,76 @@ public class RabbitMqConnectionTests : BaseTestEntity
 
     #endregion
 
+    #region CreatePublisherChannelAsync
+
+    [Test]
+    public async Task CreatePublisherChannelAsync_PassingEnabledPublisherConfirmation_ShouldCreateChannelWithEnabledPublisherConfirmation()
+    {
+        var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
+
+        await _connection.CreatePublisherChannelAsync(publisherConfirmation: true, CancellationToken.None);
+
+        var channelOptions = createdChannelOptions.Last();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(channelOptions.PublisherConfirmationsEnabled, Is.True);
+            Assert.That(channelOptions.PublisherConfirmationTrackingEnabled, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task CreatePublisherChannelAsync_PassingDisabledPublisherConfirmation_ShouldCreateChannelWithDisabledPublisherConfirmation()
+    {
+        var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
+
+        await _connection.CreatePublisherChannelAsync(publisherConfirmation: false, CancellationToken.None);
+
+        var channelOptions = createdChannelOptions.Last();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(channelOptions.PublisherConfirmationsEnabled, Is.False);
+            Assert.That(channelOptions.PublisherConfirmationTrackingEnabled, Is.False);
+        }
+    }
+
+    #endregion
+
+    #region CreateConsumerChannelAsync
+
+    [Test]
+    public async Task CreateConsumerChannelAsync_CreatingChannelForConsumer_ShouldCreateChannelWithDisabledPublisherConfirmation()
+    {
+        var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
+
+        await _connection.CreateConsumerChannelAsync(CancellationToken.None);
+
+        var channelOptions = createdChannelOptions.Last();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(channelOptions.PublisherConfirmationsEnabled, Is.False);
+            Assert.That(channelOptions.PublisherConfirmationTrackingEnabled, Is.False);
+        }
+    }
+
+    #endregion
+
     #region Helpers
+
+    private List<CreateChannelOptions> CreateOpenedConnectionForCreatingChannel()
+    {
+        var createdChannelOptions = new List<CreateChannelOptions>();
+        var connectionFactory = Substitute.For<IConnectionFactory>();
+        var openedConnection = CreateOpenedConnection(options =>
+        {
+            createdChannelOptions.Add(options);
+            return Task.FromResult(Substitute.For<IChannel>());
+        });
+        connectionFactory.CreateConnectionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(openedConnection));
+        SetPrivateField("_connectionFactory", connectionFactory);
+
+        return createdChannelOptions;
+    }
 
     private static IConnection CreateOpenedConnection(Func<CreateChannelOptions, Task<IChannel>> channelFactory)
     {

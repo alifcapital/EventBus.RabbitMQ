@@ -17,9 +17,22 @@ internal interface IRabbitMqConnection : IDisposable
     Task ConnectAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// To create a model after opening connection. If the connection is not opened yet, it will try to open.
+    /// To create a channel for receiving events after opening connection. If the connection is not opened yet, it will try to open.
+    /// The publisher confirmation is always disabled, since the channel is used only for receiving events.
     /// </summary>
-    /// <throws cref="EventBusException">Throws <see cref="EventBusException"/> when connection cannot be opened or create model.</throws>
-    /// <returns>Returns created model</returns>
-    Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken);
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <throws cref="EventBusException">Throws <see cref="EventBusException"/> when connection cannot be opened or create channel.</throws>
+    /// <returns>Returns created channel</returns>
+    Task<IChannel> CreateConsumerChannelAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// To create a channel for publishing events after opening connection. If the connection is not opened yet, it will try to open.
+    /// </summary>
+    /// <param name="publisherConfirmation">
+    /// Whether the created channel should wait for the acknowledgment of the RabbitMQ broker for each published event.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <throws cref="EventBusException">Throws <see cref="EventBusException"/> when connection cannot be opened or create channel.</throws>
+    /// <returns>Returns created channel</returns>
+    Task<IChannel> CreatePublisherChannelAsync(bool publisherConfirmation, CancellationToken cancellationToken);
 }

@@ -46,6 +46,11 @@ internal static class RabbitMqOptionsConstant
     const int RetryConnectionCount = 3;
 
     /// <summary>
+    /// Indicates whether the publisher confirmation should be enabled while publishing an event. Default value is "true".
+    /// </summary>
+    const bool PublisherConfirmation = true;
+
+    /// <summary>
     /// Indicates whether TLS/SSL should be used for the connection.
     /// When set to true, the connection will be secured using TLS/SSL.
     /// </summary>
@@ -75,6 +80,7 @@ internal static class RabbitMqOptionsConstant
             ExchangeName = ExchangeName,
             ExchangeType = ExchangeType,
             RetryConnectionCount = RetryConnectionCount,
+            PublisherConfirmation = PublisherConfirmation,
             PropertyNamingPolicy = NamingPolicyType.PascalCase,
             EventNamingPolicy = NamingPolicyType.PascalCase,
             UseTls = UseTls,

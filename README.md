@@ -175,6 +175,7 @@ First you need to add a new section called `RabbitMQSettings` to your configurat
       "QueueName": "users_queue",
       "RoutingKey": "users.created",
       "RetryConnectionCount": 5,
+      "PublisherConfirmation": true,
       "EventNamingPolicy": "SnakeCaseLower",
       "PropertyNamingPolicy": "CamelCase",
       "QueueArguments": {
@@ -228,6 +229,36 @@ A section may have the following subsections: <br/>
 `Publishers` - set custom settings for the publishers if needed. If you don't pass them, it will use the virtual host settings based on the `VirtualHostKey` which configured in the `VirtualHostSettings` section; <br/>
 `Subscribers` - set custom settings for the subscribers if needed. If you don't pass them, it will use the virtual host settings based on the `VirtualHostKey` which configured in the `VirtualHostSettings` section; <br/>
 `VirtualHostSettings` - adding virtual host configuration by given a key to use them from the publishers and subscribers. If we just add a new virtual host and not set all parameters, the not assigned properties automatically get/inherit a value from the default settings. If we don't want to use the default settings, we need to just set empty to the property to avoid auto-set. Then we can use the registered a virtual host from any subscribers or publishers by passing a `VirtualHostKey` value. Note: In the each `VirtualHostSettings` item, we are able to overwrite each option of the `DefaultSettings` except the `IsEnabled` and `UseInbox` options if needed.<br/>
+
+##### Can we make sure the published event is received by the RabbitMQ broker?
+Yes, that is the default behavior, provided by the `PublisherConfirmation` option. By default, it is set to `true`, that means the channel waits for the acknowledgment of the RabbitMQ broker for each published event, and throws an exception if the broker does not acknowledge that event. If we set it to `false`, the event is published in a fire-and-forget way, and the publishing is finished as soon as the event is written to the socket. That makes the publishing faster, but the event may be lost without any error.
+
+The option affects only the channels which are used for publishing an event. The channels of subscribers/consumers are always created without the publisher confirmation, since they never publish an event.
+
+It can be disabled in the `DefaultSettings` to turn it off for all published events, or in a specific virtual host to turn it off only for the publishers of that virtual host:
+
+```
+"RabbitMQSettings": {
+    "DefaultSettings": {
+      //your settings
+      "PublisherConfirmation": true
+    },
+    "VirtualHostSettings": {
+      "payments": {
+        "VirtualHost": "payments",
+        "PublisherConfirmation": false
+      }
+    }
+  }
+```
+
+Note what the acknowledgment of the broker does and does not guarantee:
+* It guarantees that the broker received the event and finished routing it.
+* It does **not** guarantee that the event was routed to a queue. When no binding of the exchange matches the routing key of the event, the broker drops the event and still acknowledges it. So a missing queue, a wrong `RoutingKey`, or a not yet deployed subscriber are not detected by this option, and the event will be marked as published in the Outbox table.
+* It guarantees that the event survives a restart of the broker only when the event is routed to a durable queue, since all events are published with the persistent delivery mode.
+
+##### Are the published events persistent?
+Yes, all events are published with the persistent delivery mode (`DeliveryMode = Persistent`), so the broker writes them to the disk and they are not lost after a restart of the broker. To really survive a restart, the queue the event is routed to must be durable as well, which is how the queues of this library are declared.
 
 ##### Can we use the TLS protocol while publishing events or subscribing to the events?
 Yes, we can. For that we need to just enable the using the TLS protocol by adding the options below to the `DefaultSettings` if we want to use that in all events, or add them to the specific virtual host to use from the publishing or subscribing event:
