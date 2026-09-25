@@ -187,7 +187,14 @@ internal class EventPublisherManager(
 
     ~EventPublisherManager()
     {
-        Disposing();
+        try
+        {
+            Disposing();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error while publishing the collected events on finalizing the publisher.");
+        }
     }
 
     #endregion
