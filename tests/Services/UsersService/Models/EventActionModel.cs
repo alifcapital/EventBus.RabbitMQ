@@ -6,7 +6,7 @@ namespace UsersService.Models;
 public record EventActionModel
 {
     /// <summary>
-    /// The name of the user who performs the action. Used only when the request is not authenticated.
+    /// The name of the user who performs the action.
     /// </summary>
     public string PerformedBy { get; init; }
 

@@ -28,36 +28,41 @@ public abstract class BaseEventsController(IEventsManagementService eventsServic
     public string[] GetProviderTypes() => eventsService.GetProviderTypes();
 
     [HttpPost("{id:guid}/execute")]
-    public async Task<IActionResult> Execute(Guid id, [FromBody] EventActionRequest request,
+    public async Task<IActionResult> Execute(Guid id, [FromBody] EventActionModel model,
         CancellationToken cancellationToken)
-        => ToResponse(await eventsService.ExecuteAsync(id, request, cancellationToken));
+        => ToResponse(await eventsService.ExecuteAsync(id, CreateRequest(model), cancellationToken));
 
     /// <summary>
     /// Runs the event again even if it is already processed. It may repeat the side effects of the event.
     /// </summary>
     [HttpPost("{id:guid}/force-execute")]
-    public async Task<IActionResult> ForceExecute(Guid id, [FromBody] EventActionRequest request,
+    public async Task<IActionResult> ForceExecute(Guid id, [FromBody] EventActionModel model,
         CancellationToken cancellationToken)
-        => ToResponse(await eventsService.ExecuteAsync(id, request,
+        => ToResponse(await eventsService.ExecuteAsync(id, CreateRequest(model) with { Force = true },
             cancellationToken));
 
     [HttpPost("{id:guid}/reschedule")]
     public async Task<IActionResult> Reschedule(Guid id, [FromQuery] DateTime tryAfterAt,
-        [FromBody] EventActionRequest request, CancellationToken cancellationToken)
-        => ToResponse(await eventsService.RescheduleAsync(id, tryAfterAt, request, cancellationToken));
+        [FromBody] EventActionModel model, CancellationToken cancellationToken)
+        => ToResponse(await eventsService.RescheduleAsync(id, tryAfterAt, CreateRequest(model), cancellationToken));
 
     [HttpPost("{id:guid}/reject")]
-    public async Task<IActionResult> Reject(Guid id, [FromBody] EventActionRequest request,
+    public async Task<IActionResult> Reject(Guid id, [FromBody] EventActionModel model,
         CancellationToken cancellationToken)
-        => ToResponse(await eventsService.RejectAsync(id, request, cancellationToken));
+        => ToResponse(await eventsService.RejectAsync(id, CreateRequest(model), cancellationToken));
 
     [HttpPost("{id:guid}/mark-as-processed")]
-    public async Task<IActionResult> MarkAsProcessed(Guid id, [FromBody] EventActionRequest request,
+    public async Task<IActionResult> MarkAsProcessed(Guid id, [FromBody] EventActionModel model,
         CancellationToken cancellationToken)
-        => ToResponse(await eventsService.MarkAsProcessedAsync(id, request, cancellationToken));
+        => ToResponse(await eventsService.MarkAsProcessedAsync(id, CreateRequest(model), cancellationToken));
 
     #region Helper methods
 
+    private static EventActionRequest CreateRequest(EventActionModel model) => new()
+    {
+        PerformedBy = model?.PerformedBy,
+        Comment = model?.Comment
+    };
 
     private IActionResult ToResponse(EventActionResult result) => result.Status switch
     {
