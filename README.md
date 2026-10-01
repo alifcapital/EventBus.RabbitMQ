@@ -621,8 +621,6 @@ Every event has a `status` column (`Pending` · `Failed` · `Processed` · `Reje
 
 A working example is in the `UsersService` test service: [BaseEventsController](tests/Services/UsersService/Controllers/BaseEventsController.cs) with the `api/inbox-events` and `api/outbox-events` routes. For all details (filters, paging, statuses, table schema and its migration), see the [Managing events](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#managing-events-for-an-admin-ui) section of the EventStorage documentation.
 
-> After upgrading to EventStorage `10.1.x`, the existing Inbox/Outbox tables are migrated to the new schema (the `processed_at` column is replaced by `status`) on startup under an exclusive table lock, bounded by the `InboxAndOutbox.SecondsToWaitForMigrationLock` option (default `30`).
-
 ### Can we create multiple event publishers for the same event type?
 No, we can't. If we try to create multiple event publishers for the same event type, it will throw an exception. The library is designed to work with a single event publisher for each event type.
 
