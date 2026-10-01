@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using EventBus.RabbitMQ.Extensions;
 using Microsoft.EntityFrameworkCore;
 using ServiceDefaults;
@@ -43,7 +44,8 @@ builder.Services.AddRabbitMqEventBus(builder.Configuration,
 //         //Other settings of the Outbox
 //     });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddTransient<IUserService, UserService>();
 builder.Services.AddTransient<IWebHookProvider, WebHookProvider>();

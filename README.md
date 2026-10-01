@@ -483,12 +483,12 @@ Inject the `IOutboxEventManager` interface from anywhere in your application and
 public class UserController(IOutboxEventManager outboxEventManager) : ControllerBase
 {
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] User item)
+    public async Task<IActionResult> Create([FromBody] User item, CancellationToken cancellationToken)
     {
         Items.Add(item.Id, item);
 
         var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
-        var succussfullySent = await outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker);
+        var succussfullySent = await outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker, cancellationToken);
         
         return Ok(item);
     }
@@ -496,7 +496,7 @@ public class UserController(IOutboxEventManager outboxEventManager) : Controller
 ```
 
 The `IOutboxEventManager` interface has two main methods to publish an event:
-1. The `StoreAsync` method is used to store the event in the database immediately. With this one, we could store single or multiple events at the same time.
+1. The `StoreAsync` method is used to store the event in the database immediately. With this one, we could store single or multiple events at the same time. All overloads accept an optional `CancellationToken`, pass the token of the request to cancel storing when the request is aborted. When the `UseOutbox` flag is enabled, the token passed to `IEventPublisherManager.PublishAsync` is forwarded to `StoreAsync`.
 2. The `Collect` method is used to collect the event to the memory and then store it in the database while the scope/session/request is completed. It is useful if you want to collect multiple events and clear them if needed. You could use the `CleanCollectedEvents` method of the `IOutboxEventManager` to clear the collected events.  By default, all collected events will be published automatically.
 
 Both methods provide two forms of the method, one is with the event and the other are with the event and the event publisher type. When you store an event without the event publisher type, the library will automatically find all event providers that are suitable for the event type and publish the event to all of them. If you want to publish the event to a specific event provider, you need to pass the event provider type.
@@ -600,6 +600,28 @@ builder.Services.AddRabbitMqEventBus(builder.Configuration,
 );
 ```
 `eventStoreOptions` - it is an alternative way of overwriting configurations of the `Inbox` and `Outbox` functionalities. If you don't pass them, it will use default settings from the `AppSettings`. About other configurations, you can get information from [here](https://github.com/alifcapital/EventBus.RabbitMQ?tab=readme-ov-file#advanced-configuration-of-publishers-and-subscribers-while-registering-to-the-di-services).
+
+#### Viewing and managing Inbox and Outbox events (for an admin UI)
+
+Since the `AddRabbitMqEventBus` registers the EventStorage internally, the `IInboxEventsService` and `IOutboxEventsService` scoped services of the EventStorage are available in your application without any extra registration. With them, you can build an admin page to see the Inbox/Outbox events, find the failed ones and fix them by hand:
+
+| Method | What it does |
+|---|---|
+| `GetEventsAsync(filter, ct)` | Returns a page of events matching the `EventsFilter` (status, event name, provider, time ranges, failure reason, payload text, etc.). |
+| `GetEventByIdAsync(id, ct)` | Returns the `EventDetails` of the event or `null`. |
+| `GetProviderTypes()` | Returns the names of all `EventProviderType` values. |
+| `ExecuteAsync(id, request, ct)` | Processes a `Pending`/`Failed` event now (a `Processed` one only with `Force = true`). |
+| `RescheduleAsync(id, tryAfterAt, request, ct)` | Makes a `Pending`/`Failed`/`Rejected` event pending again after `tryAfterAt`. |
+| `RejectAsync(id, request, ct)` | Stops a `Pending`/`Failed` event from ever being processed. |
+| `MarkAsProcessedAsync(id, request, ct)` | Marks a `Pending`/`Failed`/`Rejected` event as processed without running it. |
+
+Every event has a `status` column (`Pending` · `Failed` · `Processed` · `Rejected`). Actions do not throw when they cannot be done, they return an `EventActionResult` with the `Success`, `NotFound`, `AlreadyProcessing`, `InvalidState` or `Failed` status. The `EventActionRequest` (`PerformedBy`, `Comment`, `Force`) is stored with the event in the `updated_by` and `status_comment` columns.
+
+> ⚠️ The library does not add any endpoints or authorization. Write your own controller and protect every endpoint with your own permissions. Running an already processed event again (`Force = true`) may repeat its side effects, for example publishing the same event to RabbitMQ twice.
+
+A working example is in the `UsersService` test service: [BaseEventsController](tests/Services/UsersService/Controllers/BaseEventsController.cs) with the `api/inbox-events` and `api/outbox-events` routes. For all details (filters, paging, statuses, table schema and its migration), see the [Managing events](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#managing-events-for-an-admin-ui) section of the EventStorage documentation.
+
+> After upgrading to EventStorage `10.1.x`, the existing Inbox/Outbox tables are migrated to the new schema (the `processed_at` column is replaced by `status`) on startup under an exclusive table lock, bounded by the `InboxAndOutbox.SecondsToWaitForMigrationLock` option (default `30`).
 
 ### Can we create multiple event publishers for the same event type?
 No, we can't. If we try to create multiple event publishers for the same event type, it will throw an exception. The library is designed to work with a single event publisher for each event type.

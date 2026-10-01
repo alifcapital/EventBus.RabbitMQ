@@ -16,7 +16,7 @@ internal class OutboxEventPublisherManager(IOutboxEventManager outboxEventManage
     public async Task PublishAsync<TPublishEvent>(TPublishEvent publishEvent, CancellationToken cancellationToken)
         where TPublishEvent : class, IPublishEvent
     {
-        await outboxEventManager.StoreAsync(publishEvent, EventProviderType.MessageBroker);
+        await outboxEventManager.StoreAsync(publishEvent, EventProviderType.MessageBroker, cancellationToken);
     }
 
     #endregion

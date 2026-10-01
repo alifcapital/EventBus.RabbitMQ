@@ -39,16 +39,16 @@ public class UserController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] User item)
+    public async Task<IActionResult> Create([FromBody] User item, CancellationToken cancellationToken)
     {
         Items.Add(item.Id, item);
 
         var userCreated = new UserCreated { UserId = item.Id, UserName = item.Name };
 
-        //await _eventPublisherManager.PublishAsync(userCreated);
+        //await _eventPublisherManager.PublishAsync(userCreated, cancellationToken);
         var test = new TestEvent { EventId = Guid.NewGuid() };
-        //var sent = await _outboxEventManager.StoreAsync(test);
-        var successfullySent = await _outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker);
+        //var sent = await _outboxEventManager.StoreAsync(test, cancellationToken);
+        var successfullySent = await _outboxEventManager.StoreAsync(userCreated, EventProviderType.MessageBroker, cancellationToken);
 
         return Ok();
     }
@@ -69,13 +69,13 @@ public class UserController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         if (!Items.TryGetValue(id, out User item))
             return NotFound();
 
         var userDeleted = new UserDeleted { UserId = item.Id, UserName = item.Name };
-        var successfullySent = await _outboxEventManager.StoreAsync(userDeleted, EventProviderType.MessageBroker);
+        var successfullySent = await _outboxEventManager.StoreAsync(userDeleted, EventProviderType.MessageBroker, cancellationToken);
 
         Items.Remove(id);
         return Ok(item);

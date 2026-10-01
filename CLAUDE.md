@@ -6,7 +6,7 @@
 |---|---|
 | **Package ID** | `AlifCapital.EventBus.RabbitMQ` |
 | **Assembly** | `AlifCapital.EventBus.RabbitMQ` |
-| **Version** | `10.0.14` |
+| **Version** | `10.0.23` |
 | **Framework** | `.NET 10.0` |
 | **Repository** | `github.com/alifcapital/EventBus.RabbitMQ` (private) |
 | **Company** | Alif Capital |
@@ -19,7 +19,7 @@ A .NET library that provides **RabbitMQ transport** for publishing and subscribi
 
 ## Dependency on EventStorage
 
-This library directly depends on `AlifCapital.EventStorage` (`10.0.12`). It is **not a standalone library** — it delegates all persistence, retry, and idempotency logic to EventStorage.
+This library directly depends on `AlifCapital.EventStorage` (`10.1.1`). It is **not a standalone library** — it delegates all persistence, retry, and idempotency logic to EventStorage.
 
 ### EventStorage interfaces consumed by this library
 
@@ -31,7 +31,8 @@ This library directly depends on `AlifCapital.EventStorage` (`10.0.12`). It is *
 | `IMessageBrokerEventPublisher` | `MessageBrokerEventPublisher` implements it to bridge Outbox → RabbitMQ |
 | `IMessageBrokerEventHandler<T>` | `IEventSubscriber<T>` wraps it |
 | `IInboxEventManager` | `EventConsumerService` injects it to store received events |
-| `IOutboxEventManager` | Injected by consuming services for Outbox-based publishing |
+| `IOutboxEventManager` | Injected by consuming services for Outbox-based publishing; `OutboxEventPublisherManager` forwards the `CancellationToken` to `StoreAsync` |
+| `IInboxEventsService` / `IOutboxEventsService` | Registered by `AddEventStore`; not used by the library itself, exposed to consumers for viewing/managing events (see "Managing Inbox / Outbox events") |
 | `InboxAndOutboxOptions` | Passed via `eventStoreOptions` in `AddRabbitMqEventBus` |
 | `EventProviderType.MessageBroker` | Used when storing to Inbox/Outbox |
 | `EventHandlerArgs` / `InboxEventArgs` | Event hooks wired through both registrations |
@@ -45,10 +46,10 @@ This library directly depends on `AlifCapital.EventStorage` (`10.0.12`). It is *
 
 | Package | Version | Role |
 |---|---|---|
-| `AlifCapital.EventStorage` | `10.0.12` | Inbox/Outbox persistence and retry |
-| `RabbitMQ.Client` | `7.2.0` | AMQP transport layer |
-| `Polly` | `8.6.5` | Resilient connection retry on startup |
-| `Microsoft.Extensions.*` | `10.0.0` | DI, hosting, configuration |
+| `AlifCapital.EventStorage` | `10.1.1` | Inbox/Outbox persistence and retry |
+| `RabbitMQ.Client` | `7.2.1` | AMQP transport layer |
+| `Polly` | `8.6.6` | Resilient connection retry on startup |
+| `Microsoft.Extensions.*` | `10.0.7` | DI, hosting, configuration |
 
 ---
 
@@ -113,7 +114,7 @@ Direct (fire-and-forget):
 
 
 Via Outbox (guaranteed delivery):
-  IOutboxEventManager.StoreAsync(event, EventProviderType.MessageBroker)
+  IOutboxEventManager.StoreAsync(event, EventProviderType.MessageBroker, cancellationToken)
           │  persists to outbox DB table
           ▼
   [EventStorage background processor — after SecondsToDelayProcessEvents]
@@ -393,6 +394,25 @@ Enable in config:
 
 Both flags must be `true`. If `UseInbox: true` but `Inbox.IsEnabled: false`, the application throws `EventBusException` at startup.
 
+### Managing Inbox / Outbox events (EventStorage `10.1.x`)
+
+`AddEventStore` (called by `AddRabbitMqEventBus`) registers two scoped services with the same `IEventsManagementService` API:
+`IInboxEventsService` and `IOutboxEventsService`. They are for an admin UI — the library adds **no endpoints and no authorization**.
+
+| Method | Allowed status → result |
+|---|---|
+| `GetEventsAsync(EventsFilter, ct)` / `GetEventByIdAsync(id, ct)` / `GetProviderTypes()` | Read-only |
+| `ExecuteAsync(id, request, ct)` | `Pending`/`Failed` (or `Processed` with `Force = true`) → `Processed` / `Failed` |
+| `RescheduleAsync(id, tryAfterAt, request, ct)` | `Pending`/`Failed`/`Rejected` → `Pending` |
+| `RejectAsync(id, request, ct)` | `Pending`/`Failed` → `Rejected` |
+| `MarkAsProcessedAsync(id, request, ct)` | `Pending`/`Failed`/`Rejected` → `Processed` (without running it) |
+
+- Actions return `EventActionResult` (`Success` · `NotFound` · `AlreadyProcessing` · `InvalidState` · `Failed`) instead of throwing; they throw only when the Inbox/Outbox is disabled or on real errors.
+- `EventActionRequest.PerformedBy` / `Comment` are stored in `updated_by` / `status_comment`.
+- Executing an outbox event re-runs `MessageBrokerEventPublisher` → the event is re-published to RabbitMQ; executing an inbox event re-runs the `IEventSubscriber<T>` handlers.
+- Tables now use a string `status` column (`Pending` · `Failed` · `Processed` · `Rejected`) instead of `processed_at`; old tables are migrated on startup under an exclusive lock (`InboxAndOutbox.SecondsToWaitForMigrationLock`, default `30`).
+- Test endpoints: `tests/Services/UsersService/Controllers/BaseEventsController.cs` → `api/inbox-events`, `api/outbox-events` (`GET`, `GET {id}`, `GET provider-types`, `POST {id}/execute|force-execute|reschedule?tryAfterAt=|reject|mark-as-processed` with body `{ "performedBy", "comment" }`).
+
 ---
 
 ## Event Headers
@@ -513,6 +533,7 @@ EventBus.RabbitMQ.sln
         ├── AspireHost/                    # .NET Aspire orchestration for integration tests
         ├── ServiceDefaults/               # Shared OTel, health checks, service discovery
         ├── UsersService/                  # Integration test microservice (publishes + subscribes)
+        │   └── Controllers/               # UserController + Inbox/OutboxEventsController (BaseEventsController) for the management API
         └── OrdersService/                 # Integration test microservice (subscribes)
 ```
 

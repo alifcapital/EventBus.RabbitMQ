@@ -35,11 +35,12 @@ public class OutboxEventPublisherManagerTests : BaseTestEntity
     public async Task PublishAsync_PublishingOneEvent_ShouldCallStoreAsyncOnOutboxEventManager()
     {
         var publishEvent = new SimplePublishEvent();
-        var cancellationToken = CancellationToken.None;
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var cancellationToken = cancellationTokenSource.Token;
 
         await _publisherManager.PublishAsync(publishEvent, cancellationToken);
 
-        await _outboxEventManager.Received(1).StoreAsync(publishEvent, EventProviderType.MessageBroker);
+        await _outboxEventManager.Received(1).StoreAsync(publishEvent, EventProviderType.MessageBroker, cancellationToken);
     }
 
     [Test]
@@ -47,12 +48,13 @@ public class OutboxEventPublisherManagerTests : BaseTestEntity
     {
         var firstEvent = new SimplePublishEvent();
         var secondEvent = new SimplePublishEvent();
-        var cancellationToken = CancellationToken.None;
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var cancellationToken = cancellationTokenSource.Token;
 
         await _publisherManager.PublishAsync(firstEvent, cancellationToken);
         await _publisherManager.PublishAsync(secondEvent, cancellationToken);
 
-        await _outboxEventManager.Received(2).StoreAsync(Arg.Any<SimplePublishEvent>(), EventProviderType.MessageBroker);
+        await _outboxEventManager.Received(2).StoreAsync(Arg.Any<SimplePublishEvent>(), EventProviderType.MessageBroker, cancellationToken);
     }
 
     #endregion
@@ -102,7 +104,7 @@ public class OutboxEventPublisherManagerTests : BaseTestEntity
     {
         _publisherManager.Dispose();
 
-        _outboxEventManager.DidNotReceive().StoreAsync(Arg.Any<SimplePublishEvent>(), Arg.Any<EventProviderType>());
+        _outboxEventManager.DidNotReceive().StoreAsync(Arg.Any<SimplePublishEvent>(), Arg.Any<EventProviderType>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
