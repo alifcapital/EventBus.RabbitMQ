@@ -526,7 +526,18 @@ public class CreatedUserMessageBrokerEventPublisher : IMessageBrokerEventPublish
 Since we want to publish our an event to the RabbitMQ, the event publisher must implement the `IMessageBrokerEventPublisher` by passing the type of event we want to publish. And, inject the `IEventPublisherManager` interface to publish the publishing `UserCreated` event to the `RabbitMQ`.
 When we use the `StoreAsync` method of the `IOutboxEventManager` interface to publish an event, the event is first stored in the database. Then, based on our configuration (_by default, after one second_), the event will then be automatically execute the `PublishAsync` method of created the `CreatedUserMessageBrokerEventPublisher` event publisher.
 
-If an event fails for any reason, the server will automatically retry publishing it, with delays based on the configuration you set in the [Outbox section](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections).
+If an event fails for any reason, the server will automatically retry publishing it, with delays based on the configuration you set in the [Outbox section](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#options-of-inbox-and-outbox-sections). On each failure, the next try is delayed by `TryAfterSeconds` (default 5 seconds) until the event has failed more than `TryCount` times (default 10), then by `TryAfterMinutesIfTryCountExceeded` (default 5 minutes). The same retry options apply to the `Inbox` section.
+
+```
+"Outbox": {
+    "IsEnabled": true,
+    "TryCount": 5,
+    "TryAfterSeconds": 10,
+    "TryAfterMinutesIfTryCountExceeded": 20,
+}
+```
+
+> **Note:** Since EventStorage `10.1.3`, the `TryAfterMinutes` option is removed and replaced by `TryAfterMinutesIfTryCountExceeded`. If your configuration still has `TryAfterMinutes`, rename it — otherwise it is ignored and the default value is used.
 
 #### How to use the Inbox pattern in this library?
 

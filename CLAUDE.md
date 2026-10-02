@@ -19,7 +19,7 @@ A .NET library that provides **RabbitMQ transport** for publishing and subscribi
 
 ## Dependency on EventStorage
 
-This library directly depends on `AlifCapital.EventStorage` (`10.1.1`). It is **not a standalone library** — it delegates all persistence, retry, and idempotency logic to EventStorage.
+This library directly depends on `AlifCapital.EventStorage` (`10.1.3`). It is **not a standalone library** — it delegates all persistence, retry, and idempotency logic to EventStorage.
 
 ### EventStorage interfaces consumed by this library
 
@@ -46,7 +46,7 @@ This library directly depends on `AlifCapital.EventStorage` (`10.1.1`). It is **
 
 | Package | Version | Role |
 |---|---|---|
-| `AlifCapital.EventStorage` | `10.1.1` | Inbox/Outbox persistence and retry |
+| `AlifCapital.EventStorage` | `10.1.3` | Inbox/Outbox persistence and retry |
 | `RabbitMQ.Client` | `7.2.1` | AMQP transport layer |
 | `Polly` | `8.6.6` | Resilient connection retry on startup |
 | `Microsoft.Extensions.*` | `10.0.7` | DI, hosting, configuration |
@@ -393,6 +393,19 @@ Enable in config:
 ```
 
 Both flags must be `true`. If `UseInbox: true` but `Inbox.IsEnabled: false`, the application throws `EventBusException` at startup.
+
+### Retry of failed Inbox / Outbox events (EventStorage `10.1.3`)
+
+Retries are handled by EventStorage, configured per `InboxAndOutbox.Inbox` / `InboxAndOutbox.Outbox`:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `TryCount` | `10` | Attempts that use the short `TryAfterSeconds` delay |
+| `TryAfterSeconds` | `5` | Seconds added to `try_after_at` on each failure while the try count ≤ `TryCount` |
+| `TryAfterMinutesIfTryCountExceeded` | `5` | Minutes added to `try_after_at` on each failure once the try count > `TryCount` |
+| `TryAfterMinutesIfEventNotFound` | `60` | Minutes added when no `IEventSubscriber<T>` / publisher is configured for the event |
+
+> `TryAfterMinutes` was **removed** in EventStorage `10.1.3` — rename it to `TryAfterMinutesIfTryCountExceeded` in config. A leftover `TryAfterMinutes` key is silently ignored.
 
 ### Managing Inbox / Outbox events (EventStorage `10.1.x`)
 
