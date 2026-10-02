@@ -1,11 +1,18 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.2.4">
+<Project Sdk="Aspire.AppHost.Sdk/13.6.0">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <UserSecretsId>d59a1cb2-2772-49e8-a8d8-06de3c61a69c</UserSecretsId>
+        <UserSecretsId>F6E61C29-3752-4AE5-8261-2EFF1D4FDE8C</UserSecretsId>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <AspireUseCliBundle>true</AspireUseCliBundle>
     </PropertyGroup>
+    
+    <ItemGroup>
+        <PackageReference Include="Aspire.Hosting.AppHost" Version="13.6.0" />
+        <PackageReference Include="MessagePack" Version="3.1.10" />
+    </ItemGroup>
 
 </Project>

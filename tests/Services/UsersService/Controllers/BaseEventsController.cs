@@ -13,7 +13,7 @@ namespace UsersService.Controllers;
 public abstract class BaseEventsController(IEventsManagementService eventsService) : ControllerBase
 {
     [HttpGet]
-    public Task<EventPagedList<EventDetails>> GetEvents([FromQuery] EventsFilter filter,
+    public Task<EventPagedList<EventSummary>> GetEvents([FromQuery] EventsFilter filter,
         CancellationToken cancellationToken)
         => eventsService.GetEventsAsync(filter, cancellationToken);
 
