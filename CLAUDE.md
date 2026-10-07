@@ -19,7 +19,7 @@ A .NET library that provides **RabbitMQ transport** for publishing and subscribi
 
 ## Dependency on EventStorage
 
-This library directly depends on `AlifCapital.EventStorage` (`10.1.3`). It is **not a standalone library** — it delegates all persistence, retry, and idempotency logic to EventStorage.
+This library directly depends on `AlifCapital.EventStorage` (`10.1.4`). It is **not a standalone library** — it delegates all persistence, retry, and idempotency logic to EventStorage.
 
 ### EventStorage interfaces consumed by this library
 
@@ -46,7 +46,7 @@ This library directly depends on `AlifCapital.EventStorage` (`10.1.3`). It is **
 
 | Package | Version | Role |
 |---|---|---|
-| `AlifCapital.EventStorage` | `10.1.3` | Inbox/Outbox persistence and retry |
+| `AlifCapital.EventStorage` | `10.1.4` | Inbox/Outbox persistence and retry |
 | `RabbitMQ.Client` | `7.2.1` | AMQP transport layer |
 | `Polly` | `8.6.6` | Resilient connection retry on startup |
 | `Microsoft.Extensions.*` | `10.0.7` | DI, hosting, configuration |
@@ -394,7 +394,7 @@ Enable in config:
 
 Both flags must be `true`. If `UseInbox: true` but `Inbox.IsEnabled: false`, the application throws `EventBusException` at startup.
 
-### Retry of failed Inbox / Outbox events (EventStorage `10.1.3`)
+### Retry and processing of Inbox / Outbox events (EventStorage `10.1.4`)
 
 Retries are handled by EventStorage, configured per `InboxAndOutbox.Inbox` / `InboxAndOutbox.Outbox`:
 
@@ -404,8 +404,7 @@ Retries are handled by EventStorage, configured per `InboxAndOutbox.Inbox` / `In
 | `TryAfterSeconds` | `5` | Seconds added to `try_after_at` on each failure while the try count ≤ `TryCount` |
 | `TryAfterMinutesIfTryCountExceeded` | `5` | Minutes added to `try_after_at` on each failure once the try count > `TryCount` |
 | `TryAfterMinutesIfEventNotFound` | `60` | Minutes added when no `IEventSubscriber<T>` / publisher is configured for the event |
-
-> `TryAfterMinutes` was **removed** in EventStorage `10.1.3` — rename it to `TryAfterMinutesIfTryCountExceeded` in config. A leftover `TryAfterMinutes` key is silently ignored.
+| `SecondsToWaitForFetchedEventsToBeProcessed` | `600` | How long a fetched batch stays `Processing` (stored in `try_after_at`) before other instances may fetch it again. Counted from the batch fetch time, so it must exceed the time to process a whole batch (`MaxEventsToFetch` / `MaxConcurrency` rounds); too short → an event may be processed twice |
 
 ### Managing Inbox / Outbox events (EventStorage `10.1.x`)
 
@@ -421,9 +420,10 @@ Retries are handled by EventStorage, configured per `InboxAndOutbox.Inbox` / `In
 | `MarkAsProcessedAsync(id, request, ct)` | `Pending`/`Failed`/`Rejected` → `Processed` (without running it) |
 
 - Actions return `EventActionResult` (`Success` · `NotFound` · `AlreadyProcessing` · `InvalidState` · `Failed`) instead of throwing; they throw only when the Inbox/Outbox is disabled or on real errors.
+- Actions claim the event by marking it `Processing` (same as the background processor), so they are safe while the app runs; an event that is `Processing` at that moment returns `AlreadyProcessing`.
 - `EventActionRequest.PerformedBy` / `Comment` are stored in `updated_by` / `status_comment`.
 - Executing an outbox event re-runs `MessageBrokerEventPublisher` → the event is re-published to RabbitMQ; executing an inbox event re-runs the `IEventSubscriber<T>` handlers.
-- Tables now use a string `status` column (`Pending` · `Failed` · `Processed` · `Rejected`) instead of `processed_at`; old tables are migrated on startup under an exclusive lock (`InboxAndOutbox.SecondsToWaitForMigrationLock`, default `30`).
+- Tables now use a string `status` column (`Pending` · `Failed` · `Processed` · `Rejected` · `Processing`) instead of `processed_at`; old tables are migrated on startup under an exclusive lock (`InboxAndOutbox.SecondsToWaitForMigrationLock`, default `30`).
 - Test endpoints: `tests/Services/UsersService/Controllers/BaseEventsController.cs` → `api/inbox-events`, `api/outbox-events` (`GET`, `GET {id}`, `GET provider-types`, `POST {id}/execute|force-execute|reschedule?tryAfterAt=|reject|mark-as-processed` with body `{ "performedBy", "comment" }`).
 
 ---

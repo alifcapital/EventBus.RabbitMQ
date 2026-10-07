@@ -537,8 +537,6 @@ If an event fails for any reason, the server will automatically retry publishing
 }
 ```
 
-> **Note:** Since EventStorage `10.1.3`, the `TryAfterMinutes` option is removed and replaced by `TryAfterMinutesIfTryCountExceeded`. If your configuration still has `TryAfterMinutes`, rename it — otherwise it is ignored and the default value is used.
-
 #### How to use the Inbox pattern in this library?
 
 As you know, the Inbox pattern for storing all incoming events or messages to the application in a database. To use this functionality, first you need to enable the `Inbox` feature by adding the following section to your AppSettings file.
@@ -626,7 +624,7 @@ Since the `AddRabbitMqEventBus` registers the EventStorage internally, the `IInb
 | `RejectAsync(id, request, ct)` | Stops a `Pending`/`Failed` event from ever being processed. |
 | `MarkAsProcessedAsync(id, request, ct)` | Marks a `Pending`/`Failed`/`Rejected` event as processed without running it. |
 
-Every event has a `status` column (`Pending` · `Failed` · `Processed` · `Rejected`). Actions do not throw when they cannot be done, they return an `EventActionResult` with the `Success`, `NotFound`, `AlreadyProcessing`, `InvalidState` or `Failed` status. The `EventActionRequest` (`PerformedBy`, `Comment`, `Force`) is stored with the event in the `updated_by` and `status_comment` columns.
+Every event has a `status` column (`Pending` · `Failed` · `Processed` · `Rejected` · `Processing`). An event is `Processing` while an instance processes it or a manual action changes it, so actions are safe to use while the application is running: if the event is `Processing` at that moment, the action returns `AlreadyProcessing`. Actions do not throw when they cannot be done, they return an `EventActionResult` with the `Success`, `NotFound`, `AlreadyProcessing`, `InvalidState` or `Failed` status. The `EventActionRequest` (`PerformedBy`, `Comment`, `Force`) is stored with the event in the `updated_by` and `status_comment` columns.
 
 > ⚠️ The library does not add any endpoints or authorization. Write your own controller and protect every endpoint with your own permissions. Running an already processed event again (`Force = true`) may repeat its side effects, for example publishing the same event to RabbitMQ twice.
 
