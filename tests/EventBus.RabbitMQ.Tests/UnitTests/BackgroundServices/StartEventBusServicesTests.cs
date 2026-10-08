@@ -15,7 +15,7 @@ public class StartEventBusServicesTests : BaseTestEntity
     private ILogger<StartEventBusServices> _logger;
     private StartEventBusServices _service;
 
-    #region SetUp
+    #region SetUp and TearDown
 
     [SetUp]
     public void Setup()
