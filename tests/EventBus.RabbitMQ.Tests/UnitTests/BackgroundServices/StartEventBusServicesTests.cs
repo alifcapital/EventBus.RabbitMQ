@@ -63,7 +63,7 @@ public class StartEventBusServicesTests : BaseTestEntity
     #region StopAsync
 
     [Test]
-    public async Task StopAsync_ShouldStopReceivingEventsOfAllConsumers()
+    public async Task StopAsync_WhenApplicationIsStopping_ShouldStopReceivingEventsOfAllConsumers()
     {
         var cancellationToken = CancellationToken.None;
 
