@@ -25,9 +25,31 @@ internal class StartEventBusServices(
             publisherCollector.PrintLoadedPublishersInformation();
             subscriberCollector.PrintLoadedSubscribersInformation();
         }
+        catch (Exception) when (stoppingToken.IsCancellationRequested)
+        {
+            // The application is stopping while starting, so the error is caused by the shutdown.
+        }
         catch (Exception e)
         {
             logger.LogError(e, "Error while configuring publisher and subscriber of the RabbitMQ.");
         }
+    }
+
+    /// <summary>
+    /// Stops receiving events before the application disposes its services, so the events being received while
+    /// stopping are not handled with the disposed services. Unacknowledged events are redelivered by RabbitMQ.
+    /// </summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await subscriberCollector.StopReceivingEventsAsync(cancellationToken);
+        }
+        catch (Exception e)
+        {
+            logger.LogWarning(e, "Error while stopping the RabbitMQ consumers.");
+        }
+
+        await base.StopAsync(cancellationToken);
     }
 }

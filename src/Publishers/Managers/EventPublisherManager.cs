@@ -6,6 +6,7 @@ using EventBus.RabbitMQ.Instrumentation;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventStorage.Instrumentation;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 
@@ -16,10 +17,17 @@ namespace EventBus.RabbitMQ.Publishers.Managers;
 /// </summary>
 internal class EventPublisherManager(
     ILogger<EventPublisherManager> logger,
-    IEventPublisherCollector eventPublisherCollector = null
+    IEventPublisherCollector eventPublisherCollector = null,
+    IHostApplicationLifetime applicationLifetime = null
 ) : IEventPublisherManager
 {
     private readonly ConcurrentDictionary<Guid, IPublishEvent> _eventsToPublish = [];
+
+    /// <summary>
+    /// While the application is stopping, the errors are caused by the shutdown, so there is no need to report them.
+    /// The exception is still thrown to let the caller know that the event is not published.
+    /// </summary>
+    private bool IsApplicationStopping => applicationLifetime?.ApplicationStopping.IsCancellationRequested == true;
 
     #region PublishAsync
 
@@ -154,7 +162,7 @@ internal class EventPublisherManager(
                 cancellationToken: cancellationToken
             );
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException && !IsApplicationStopping)
         {
             logger.LogError(ex, "Error while publishing RabbitMQ event '{EventName}'.", eventTypeName);
             throw;
@@ -193,7 +201,9 @@ internal class EventPublisherManager(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error while publishing the collected events on finalizing the publisher.");
+            // The finalizer must not throw, it only skips reporting the errors caused by stopping the application.
+            if (!IsApplicationStopping)
+                logger.LogError(ex, "Error while publishing the collected events on finalizing the publisher.");
         }
     }
 

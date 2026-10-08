@@ -28,6 +28,31 @@ internal class EventConsumerService : IEventConsumerService
     private readonly IRabbitMqConnection _connection;
     private IChannel _consumerChannel;
     private CancellationToken _serviceCancellationToken;
+    
+    /// <summary>
+    /// The tag/id of newly created consumer channel to use for closing the opened channel if needed.
+    /// </summary>
+    private string _consumerTag;
+
+    /// <summary>
+    /// Whether the consumer is stopping to receive events, e.g. because the application is shutting down.
+    /// </summary>
+    private volatile bool _isStopping;
+
+    /// <summary>
+    /// The number of received events that are being handled at the moment.
+    /// </summary>
+    private int _handlingEventsCount;
+
+    /// <summary>
+    /// The interval for checking whether the events being handled are completed while stopping.
+    /// </summary>
+    private static readonly TimeSpan HandlingEventsCheckInterval = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// Whether the errors are caused by stopping the application (e.g. the disposed service provider).
+    /// </summary>
+    private bool IsStopping => _isStopping || _serviceCancellationToken.IsCancellationRequested;
 
     /// <summary>
     /// Dictionary collection to store all events and event handlers information
@@ -83,6 +108,10 @@ internal class EventConsumerService : IEventConsumerService
         {
             await CreateChannelAndStartConsumingAsync(cancellationToken);
         }
+        catch (Exception) when (IsStopping)
+        {
+            // The application is stopping, so the error is caused by the shutdown and there is no need to retry.
+        }
         catch (Exception e)
         {
             _logger.LogError(e,
@@ -99,7 +128,7 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private async Task RetryCreateChannelAndSubscribeReceiverAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested && !_isStopping)
         {
             try
             {
@@ -110,6 +139,8 @@ internal class EventConsumerService : IEventConsumerService
                 break;
             }
 
+            if (_isStopping) break;
+
             try
             {
                 await CreateChannelAndStartConsumingAsync(cancellationToken);
@@ -117,6 +148,11 @@ internal class EventConsumerService : IEventConsumerService
                     "Successfully created a channel and subscribed a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host after retrying.",
                     _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
                 return;
+            }
+            catch (Exception) when (IsStopping)
+            {
+                // The application is stopping, so the error is caused by the shutdown and there is no need to retry.
+                break;
             }
             catch (Exception e)
             {
@@ -137,7 +173,7 @@ internal class EventConsumerService : IEventConsumerService
             _consumerChannel = await CreateConsumerChannelAsync(cancellationToken);
             var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
             consumer.ReceivedAsync += Consumer_ReceivingEvent;
-            _ = await _consumerChannel.BasicConsumeAsync(
+            _consumerTag = await _consumerChannel.BasicConsumeAsync(
                 queue: _connectionOptions.QueueName,
                 autoAck: false,
                 consumer: consumer,
@@ -202,6 +238,8 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
+        if (_isStopping) return;
+
         try
         {
             await _reopenChannelGate.WaitAsync(_serviceCancellationToken);
@@ -244,6 +282,8 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private async Task OnChannelShutdownAsync(object sender, ShutdownEventArgs reason)
     {
+        if (_isStopping) return;
+
         try
         {
             await _reopenChannelGate.WaitAsync(_serviceCancellationToken);
@@ -288,6 +328,58 @@ internal class EventConsumerService : IEventConsumerService
 
     #endregion
 
+    #region Stop receiving events
+
+    public async Task StopReceivingEventsAsync(CancellationToken cancellationToken)
+    {
+        _isStopping = true;
+
+        var channel = _consumerChannel;
+        if (channel is null) return;
+
+        UnsubscribeChannelEvents(channel);
+        try
+        {
+            if (_consumerTag is not null && channel.IsOpen)
+                await channel.BasicCancelAsync(_consumerTag, noWait: false, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogWarning(e,
+                "Error while cancelling the RabbitMQ consumer of '{QueueName}' queue of '{VirtualHost}' virtual host.",
+                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+        }
+
+        try
+        {
+            // Waits until all processing events are handled.
+            while (Volatile.Read(ref _handlingEventsCount) > 0)
+                await Task.Delay(HandlingEventsCheckInterval, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "Stopped waiting for {HandlingEventsCount} event(s) being handled by the consumer of '{QueueName}' queue of '{VirtualHost}' virtual host.",
+                Volatile.Read(ref _handlingEventsCount), _connectionOptions.QueueName,
+                _connectionOptions.VirtualHostSettings.VirtualHost);
+        }
+
+        try
+        {
+            // Closing the channel makes RabbitMQ redeliver the received but unacknowledged events.
+            if (channel.IsOpen)
+                await channel.CloseAsync(CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            _logger.LogDebug(e,
+                "Error while closing the RabbitMQ consumer channel of '{QueueName}' queue of '{VirtualHost}' virtual host.",
+                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+        }
+    }
+
+    #endregion
+
     #region Receiving and handling events
 
     /// <summary>
@@ -296,8 +388,19 @@ internal class EventConsumerService : IEventConsumerService
     private async Task Consumer_ReceivingEvent(object sender, BasicDeliverEventArgs eventArgs)
     {
         var eventType = eventArgs.BasicProperties.Type ?? eventArgs.RoutingKey;
+        // Increment the handling events counter.
+        Interlocked.Increment(ref _handlingEventsCount);
         try
         {
+            if (_isStopping)
+            {
+                // The event is not acknowledged, so RabbitMQ redelivers it after the channel is closed.
+                _logger.LogDebug(
+                    "The consumer is stopping. Skipped receiving '{EventType}' event with the '{RoutingKey}' routing key and '{EventId}' event id.",
+                    eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId);
+                return;
+            }
+
             var scopedTags = new Dictionary<string, object>
             {
                 { EventBusInvestigationTagNames.ReceivedEventIdTag, eventArgs.BasicProperties.MessageId },
@@ -365,7 +468,7 @@ internal class EventConsumerService : IEventConsumerService
                 using var scope = _serviceProvider.CreateScope();
                 if (_useInbox)
                 {
-                    StoreEventToInbox(scope.ServiceProvider, subscribersInformation, eventId, eventPayload,
+                    await StoreEventToInboxAsync(scope.ServiceProvider, subscribersInformation, eventId, eventPayload,
                         eventHeadersAsJson);
                 }
                 else
@@ -381,6 +484,14 @@ internal class EventConsumerService : IEventConsumerService
                 _logger.LogWarning("No subscription for '{EventType}' RabbitMQ event.", eventType);
             }
         }
+        catch (Exception ex) when (IsStopping)
+        {
+            // The application is stopping, so the error is caused by the shutdown (e.g. the disposed service provider).
+            // The event is not acknowledged, so RabbitMQ redelivers it after the restart.
+            _logger.LogDebug(ex,
+                "The application is stopping. Skipped receiving '{EventType}' event with the '{RoutingKey}' routing key and '{EventId}' event id.",
+                eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId);
+        }
         catch (Exception ex)
         {
             var innerMessage = ex is EventBusException ? ex.Message : null;
@@ -388,13 +499,19 @@ internal class EventConsumerService : IEventConsumerService
                 "Error while receiving '{EventType}' event with the '{RoutingKey}' routing key and '{EventId}' event id. {InnerMessage}",
                 eventType, eventArgs.RoutingKey, eventArgs.BasicProperties.MessageId, innerMessage);
         }
+        finally
+        {
+            // Decrement the handling events counter.
+            Interlocked.Decrement(ref _handlingEventsCount);
+        }
 
         #region Helper methods
 
         ValueTask MarkEventIsDeliveredAsync()
         {
+            // The event is already handled, so it must be acknowledged even if the application is stopping.
             return _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag, multiple: false,
-                cancellationToken: _serviceCancellationToken);
+                cancellationToken: CancellationToken.None);
         }
 
         static string SerializeData<TValue>(TValue data)
@@ -452,17 +569,20 @@ internal class EventConsumerService : IEventConsumerService
             OnAllEventSubscribersAreHandled(subscribersInformation.EventTypeName, serviceProvider);
         }
 
-        void StoreEventToInbox(IServiceProvider serviceProvider, SubscribersInformation subscribersInformation,
-            Guid eventId, string eventPayload, string eventHeadersAsJson)
+        async Task StoreEventToInboxAsync(IServiceProvider serviceProvider,
+            SubscribersInformation subscribersInformation, Guid eventId, string eventPayload,
+            string eventHeadersAsJson)
         {
             var inboxEventManager = serviceProvider.GetRequiredService<IInboxEventManager>();
             var namingPolicyType = subscribersInformation.Settings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase;
-            _ = inboxEventManager.Store(eventId, subscribersInformation.EventTypeName,
+            // If storing is cancelled by stopping the application, the event is not acknowledged and RabbitMQ redelivers it.
+            _ = await inboxEventManager.StoreAsync(eventId, subscribersInformation.EventTypeName,
                 EventProviderType.MessageBroker,
                 payload: eventPayload,
                 headers: eventHeadersAsJson,
                 eventPath: eventArgs.RoutingKey,
-                namingPolicyType: namingPolicyType);
+                namingPolicyType: namingPolicyType,
+                cancellationToken: _serviceCancellationToken);
         }
 
         #endregion

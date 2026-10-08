@@ -24,6 +24,12 @@ internal interface IEventSubscriberCollector
     public Task CreateConsumerForEachQueueAndStartReceivingEventsAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// Stops receiving events by all consumers and waits for the events being handled.
+    /// </summary>
+    /// <param name="cancellationToken">The token to stop waiting for the events being handled.</param>
+    public Task StopReceivingEventsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// For printing all loaded subscribers information to the logger for investigation purposes.
     /// </summary>
     internal void PrintLoadedSubscribersInformation();

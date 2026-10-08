@@ -19,7 +19,7 @@ A .NET library that provides **RabbitMQ transport** for publishing and subscribi
 
 ## Dependency on EventStorage
 
-This library directly depends on `AlifCapital.EventStorage` (`10.1.4`). It is **not a standalone library** — it delegates all persistence, retry, and idempotency logic to EventStorage.
+This library directly depends on `AlifCapital.EventStorage` (`10.1.5`). It is **not a standalone library** — it delegates all persistence, retry, and idempotency logic to EventStorage.
 
 ### EventStorage interfaces consumed by this library
 
@@ -30,7 +30,7 @@ This library directly depends on `AlifCapital.EventStorage` (`10.1.4`). It is **
 | `IHasHeaders` | `IBaseEvent` inherits from it — all events have headers |
 | `IMessageBrokerEventPublisher` | `MessageBrokerEventPublisher` implements it to bridge Outbox → RabbitMQ |
 | `IMessageBrokerEventHandler<T>` | `IEventSubscriber<T>` wraps it |
-| `IInboxEventManager` | `EventConsumerService` injects it to store received events |
+| `IInboxEventManager` | `EventConsumerService` injects it to store received events via `StoreAsync`, passing the stopping token of the application |
 | `IOutboxEventManager` | Injected by consuming services for Outbox-based publishing; `OutboxEventPublisherManager` forwards the `CancellationToken` to `StoreAsync` |
 | `IInboxEventsService` / `IOutboxEventsService` | Registered by `AddEventStore`; not used by the library itself, exposed to consumers for viewing/managing events (see "Managing Inbox / Outbox events") |
 | `InboxAndOutboxOptions` | Passed via `eventStoreOptions` in `AddRabbitMqEventBus` |
@@ -46,7 +46,7 @@ This library directly depends on `AlifCapital.EventStorage` (`10.1.4`). It is **
 
 | Package | Version | Role |
 |---|---|---|
-| `AlifCapital.EventStorage` | `10.1.4` | Inbox/Outbox persistence and retry |
+| `AlifCapital.EventStorage` | `10.1.5` | Inbox/Outbox persistence and retry |
 | `RabbitMQ.Client` | `7.2.1` | AMQP transport layer |
 | `Polly` | `8.6.6` | Resilient connection retry on startup |
 | `Microsoft.Extensions.*` | `10.0.7` | DI, hosting, configuration |
@@ -141,9 +141,10 @@ RabbitMQ AMQP delivery → EventConsumerService.Consumer_ReceivingEvent()
           │                      → BasicAckAsync()
           │
           └─ UseInbox = true ──────────────────────────────────────────►
-                        IInboxEventManager.Store(eventId, eventTypeName,
+                        IInboxEventManager.StoreAsync(eventId, eventTypeName,
                             EventProviderType.MessageBroker,
-                            payload, headers, routingKey, namingPolicyType)
+                            payload, headers, routingKey, namingPolicyType,
+                            cancellationToken: stoppingToken)
                             │
                             ▼
                         [EventStorage background processor]
@@ -394,7 +395,7 @@ Enable in config:
 
 Both flags must be `true`. If `UseInbox: true` but `Inbox.IsEnabled: false`, the application throws `EventBusException` at startup.
 
-### Retry and processing of Inbox / Outbox events (EventStorage `10.1.4`)
+### Retry and processing of Inbox / Outbox events (EventStorage `10.1.x`)
 
 Retries are handled by EventStorage, configured per `InboxAndOutbox.Inbox` / `InboxAndOutbox.Outbox`:
 
@@ -529,7 +530,7 @@ EventBus.RabbitMQ.sln
 │   │   └── Options/
 │   │       └── EventSubscriberOptions.cs  # Per-event queue name, routing key, virtual host key
 │   ├── BackgroundServices/
-│   │   ├── StartEventBusServices.cs       # Startup: declare exchanges, create consumers
+│   │   ├── StartEventBusServices.cs       # Startup: declare exchanges, create consumers; StopAsync: stop consumers before services are disposed
 │   │   └── EventBusNotifier.cs            # Startup: log config warnings
 │   ├── Extensions/
 │   │   └── RabbitMqExtensions.cs          # AddRabbitMqEventBus — main registration entry point
@@ -565,8 +566,10 @@ EventBus.RabbitMQ.sln
 | `EventTypeName` overrides `EventNamingPolicy` | If `EventTypeName` is set, naming policy is ignored for that event |
 | Subscriber event type resolved from `BasicProperties.Type` | Falls back to `RoutingKey` if type header is absent |
 | Naming policy mismatch throws | If received `event.naming-policy-type` header differs from configured, an `EventBusException` is thrown |
-| `BasicAck` on inbox path is immediate | ACK sent after `IInboxEventManager.Store()`, not after handler execution |
+| `BasicAck` on inbox path is immediate | ACK sent after `IInboxEventManager.StoreAsync()`, not after handler execution |
 | `IEventPublisherManager` is `IDisposable` | Collected events are published on `Dispose` (end of scope) |
+| Consumers stop before services are disposed | `StartEventBusServices.StopAsync` cancels consumers and waits for in-flight events; shutdown errors are not logged as errors (see "Shutdown Sequence") |
+| Finalizers must never throw | `~EventPublisherManager` always swallows exceptions; it only skips logging them while the application is stopping |
 
 ---
 

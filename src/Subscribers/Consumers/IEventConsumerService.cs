@@ -15,4 +15,10 @@ internal interface IEventConsumerService
     /// Starts receiving events by creating a consumer
     /// </summary>
     public Task CreateChannelAndSubscribeReceiverAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Stops receiving new events, waits for the events being handled and closes the consumer channel.
+    /// </summary>
+    /// <param name="cancellationToken">The token to stop waiting for the events being handled.</param>
+    public Task StopReceivingEventsAsync(CancellationToken cancellationToken);
 }
