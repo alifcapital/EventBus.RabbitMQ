@@ -346,9 +346,9 @@ internal class EventConsumerService : IEventConsumerService
                 _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
         }
 
-        //TODO
         try
         {
+            // Waits until all processing events are handled.
             while (Volatile.Read(ref _handlingEventsCount) > 0)
                 await Task.Delay(HandlingEventsCheckInterval, cancellationToken);
         }
@@ -384,6 +384,7 @@ internal class EventConsumerService : IEventConsumerService
     private async Task Consumer_ReceivingEvent(object sender, BasicDeliverEventArgs eventArgs)
     {
         var eventType = eventArgs.BasicProperties.Type ?? eventArgs.RoutingKey;
+        // Increment the handling events counter.
         Interlocked.Increment(ref _handlingEventsCount);
         try
         {
@@ -496,6 +497,7 @@ internal class EventConsumerService : IEventConsumerService
         }
         finally
         {
+            // Decrement the handling events counter.
             Interlocked.Decrement(ref _handlingEventsCount);
         }
 
