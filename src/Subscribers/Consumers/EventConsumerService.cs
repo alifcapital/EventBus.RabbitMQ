@@ -28,6 +28,10 @@ internal class EventConsumerService : IEventConsumerService
     private readonly IRabbitMqConnection _connection;
     private IChannel _consumerChannel;
     private CancellationToken _serviceCancellationToken;
+    
+    /// <summary>
+    /// The tag/id of newly created consumer channel to use for closing the opened channel if needed.
+    /// </summary>
     private string _consumerTag;
 
     /// <summary>
