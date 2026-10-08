@@ -141,6 +141,27 @@ internal class EventSubscriberCollector(
 
     #endregion
 
+    #region StopReceivingEventsAsync
+
+    public async Task StopReceivingEventsAsync(CancellationToken cancellationToken)
+    {
+        var stopTasks = _eventConsumers.Values.Select(async consumer =>
+        {
+            try
+            {
+                await consumer.StopReceivingEventsAsync(cancellationToken);
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(e, "Error while stopping the consumer from receiving events.");
+            }
+        });
+
+        await Task.WhenAll(stopTasks);
+    }
+
+    #endregion
+
     #region On exceuting subscribed event
 
     /// <summary>
