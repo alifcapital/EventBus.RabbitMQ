@@ -235,6 +235,60 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         await eventConsumer.Received(1).CreateChannelAndSubscribeReceiverAsync(Arg.Any<CancellationToken>());
     }
 
+    [Test]
+    public async Task CreateConsumerForEachQueueAndStartReceivingEventsAsync_WhenFailsWhileStopping_ShouldNotLogError()
+    {
+        var logger = Substitute.For<ILogger<EventSubscriberCollector>>();
+        _serviceProvider.GetService(typeof(ILogger<EventSubscriberCollector>)).Returns(logger);
+        var subscriberCollector = new EventSubscriberCollector(
+            RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions(), _serviceProvider);
+        _serviceProvider.GetService(typeof(IEventConsumerServiceCreator))
+            .Returns(_ => throw new ObjectDisposedException(nameof(IServiceProvider)));
+
+        await subscriberCollector.CreateConsumerForEachQueueAndStartReceivingEventsAsync(
+            new CancellationToken(canceled: true));
+
+        Assert.That(logger.ReceivedCalls().Any(call =>
+            call.GetMethodInfo().Name == nameof(ILogger.Log) &&
+            call.GetArguments()[0] is LogLevel.Error), Is.False);
+    }
+
+    #endregion
+
+    #region StopReceivingEventsAsync
+
+    [Test]
+    public async Task StopReceivingEventsAsync_WithConsumers_ShouldStopEachConsumer()
+    {
+        var firstConsumer = Substitute.For<IEventConsumerService>();
+        var secondConsumer = Substitute.For<IEventConsumerService>();
+        var eventConsumers = GetEventConsumerServices();
+        eventConsumers.Add("first", firstConsumer);
+        eventConsumers.Add("second", secondConsumer);
+        var cancellationToken = CancellationToken.None;
+
+        await _subscriberCollector.StopReceivingEventsAsync(cancellationToken);
+
+        await firstConsumer.Received(1).StopReceivingEventsAsync(cancellationToken);
+        await secondConsumer.Received(1).StopReceivingEventsAsync(cancellationToken);
+    }
+
+    [Test]
+    public async Task StopReceivingEventsAsync_WhenOneConsumerFails_ShouldStillStopOthersWithoutThrowing()
+    {
+        var failingConsumer = Substitute.For<IEventConsumerService>();
+        failingConsumer.StopReceivingEventsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("Channel is broken")));
+        var consumer = Substitute.For<IEventConsumerService>();
+        var eventConsumers = GetEventConsumerServices();
+        eventConsumers.Add("failing", failingConsumer);
+        eventConsumers.Add("working", consumer);
+
+        Assert.DoesNotThrowAsync(() => _subscriberCollector.StopReceivingEventsAsync(CancellationToken.None));
+
+        await consumer.Received(1).StopReceivingEventsAsync(Arg.Any<CancellationToken>());
+    }
+
     #endregion
 
     #region Helper method

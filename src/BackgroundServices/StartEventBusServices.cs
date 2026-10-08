@@ -25,6 +25,10 @@ internal class StartEventBusServices(
             publisherCollector.PrintLoadedPublishersInformation();
             subscriberCollector.PrintLoadedSubscribersInformation();
         }
+        catch (Exception) when (stoppingToken.IsCancellationRequested)
+        {
+            // The application is stopping while starting, so the error is caused by the shutdown.
+        }
         catch (Exception e)
         {
             logger.LogError(e, "Error while configuring publisher and subscriber of the RabbitMQ.");

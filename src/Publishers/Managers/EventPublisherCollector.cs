@@ -83,7 +83,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 var exchangeId = $"{virtualHostSettings.VirtualHost}-{virtualHostSettings.HostPort}-{virtualHostSettings.ExchangeName}";
                 if (createdExchangeNames.Contains(exchangeId)) continue;
 
-                using var channel = await CreateRabbitMqChannelAsync(eventSettings, cancellationToken);
+                await using var channel = await CreateRabbitMqChannelAsync(eventSettings, cancellationToken);
                 await channel.ExchangeDeclareAsync(
                     exchange: virtualHostSettings.ExchangeName,
                     type: virtualHostSettings.ExchangeType,
@@ -94,6 +94,11 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                     cancellationToken: cancellationToken);
 
                 createdExchangeNames.Add(exchangeId);
+            }
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+                // The application is stopping while starting, so the error is caused by the shutdown.
+                return;
             }
             catch (Exception ex)
             {

@@ -6,6 +6,7 @@ using EventBus.RabbitMQ.Publishers.Managers;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using RabbitMQ.Client;
@@ -143,6 +144,50 @@ public class EventPublisherManagerTests : BaseTestEntity
 
         Assert.ThrowsAsync<EventBusException>(async () =>
             await _publisherManager.PublishAsync(publishEvent, cancellationToken));
+    }
+
+    [Test]
+    public void PublishAsync_WhenPublishingFailsWhileApplicationIsStopping_ShouldThrowWithoutLoggingError()
+    {
+        var applicationLifetime = Substitute.For<IHostApplicationLifetime>();
+        applicationLifetime.ApplicationStopping.Returns(new CancellationToken(canceled: true));
+        using var publisherManager = new EventPublisherManager(_logger, _publisherCollector, applicationLifetime);
+        var publishEvent = new SimplePublishEvent();
+        _publisherCollector.GetPublisherSettings(publishEvent)
+            .Returns(_ => throw new ObjectDisposedException(nameof(IServiceProvider)));
+
+        Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            publisherManager.PublishAsync(publishEvent, CancellationToken.None));
+        Assert.That(HasErrorLog(), Is.False);
+    }
+
+    [Test]
+    public void PublishAsync_WhenPublishingFailsWithoutStoppingApplication_ShouldThrowAndLogError()
+    {
+        var applicationLifetime = Substitute.For<IHostApplicationLifetime>();
+        applicationLifetime.ApplicationStopping.Returns(CancellationToken.None);
+        using var publisherManager = new EventPublisherManager(_logger, _publisherCollector, applicationLifetime);
+        var publishEvent = new SimplePublishEvent();
+        _publisherCollector.GetPublisherSettings(publishEvent)
+            .Returns(_ => throw new ObjectDisposedException(nameof(IServiceProvider)));
+
+        Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            publisherManager.PublishAsync(publishEvent, CancellationToken.None));
+        Assert.That(HasErrorLog(), Is.True);
+    }
+
+    [Test]
+    public void PublishAsync_WhenPublishingIsCancelled_ShouldThrowWithoutLoggingError()
+    {
+        var publishEvent = new SimplePublishEvent();
+        var eventSettings = CreateEventSettings(publishEvent);
+        _publisherCollector.GetPublisherSettings(publishEvent).Returns(eventSettings);
+        _publisherCollector.CreateRabbitMqChannelAsync(eventSettings, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IChannel>(new OperationCanceledException()));
+
+        Assert.ThrowsAsync<OperationCanceledException>(() =>
+            _publisherManager.PublishAsync(publishEvent, CancellationToken.None));
+        Assert.That(HasErrorLog(), Is.False);
     }
 
     #endregion
@@ -386,6 +431,13 @@ public class EventPublisherManagerTests : BaseTestEntity
             .Returns(Task.FromResult(channel));
 
         return channel;
+    }
+
+    private bool HasErrorLog()
+    {
+        return _logger.ReceivedCalls().Any(call =>
+            call.GetMethodInfo().Name == nameof(ILogger.Log) &&
+            call.GetArguments()[0] is LogLevel.Error);
     }
 
     private static readonly FieldInfo EventsToPublishFieldInfo = typeof(EventPublisherManager).GetField(

@@ -104,6 +104,10 @@ internal class EventConsumerService : IEventConsumerService
         {
             await CreateChannelAndStartConsumingAsync(cancellationToken);
         }
+        catch (Exception) when (IsStopping)
+        {
+            // The application is stopping, so the error is caused by the shutdown and there is no need to retry.
+        }
         catch (Exception e)
         {
             _logger.LogError(e,
@@ -140,6 +144,11 @@ internal class EventConsumerService : IEventConsumerService
                     "Successfully created a channel and subscribed a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host after retrying.",
                     _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
                 return;
+            }
+            catch (Exception) when (IsStopping)
+            {
+                // The application is stopping, so the error is caused by the shutdown and there is no need to retry.
+                break;
             }
             catch (Exception e)
             {
@@ -454,7 +463,7 @@ internal class EventConsumerService : IEventConsumerService
                 using var scope = _serviceProvider.CreateScope();
                 if (_useInbox)
                 {
-                    StoreEventToInbox(scope.ServiceProvider, subscribersInformation, eventId, eventPayload,
+                    await StoreEventToInboxAsync(scope.ServiceProvider, subscribersInformation, eventId, eventPayload,
                         eventHeadersAsJson);
                 }
                 else
@@ -554,17 +563,20 @@ internal class EventConsumerService : IEventConsumerService
             OnAllEventSubscribersAreHandled(subscribersInformation.EventTypeName, serviceProvider);
         }
 
-        void StoreEventToInbox(IServiceProvider serviceProvider, SubscribersInformation subscribersInformation,
-            Guid eventId, string eventPayload, string eventHeadersAsJson)
+        async Task StoreEventToInboxAsync(IServiceProvider serviceProvider,
+            SubscribersInformation subscribersInformation, Guid eventId, string eventPayload,
+            string eventHeadersAsJson)
         {
             var inboxEventManager = serviceProvider.GetRequiredService<IInboxEventManager>();
             var namingPolicyType = subscribersInformation.Settings.PropertyNamingPolicy ?? NamingPolicyType.PascalCase;
-            _ = inboxEventManager.Store(eventId, subscribersInformation.EventTypeName,
+            // If storing is cancelled by stopping the application, the event is not acknowledged and RabbitMQ redelivers it.
+            _ = await inboxEventManager.StoreAsync(eventId, subscribersInformation.EventTypeName,
                 EventProviderType.MessageBroker,
                 payload: eventPayload,
                 headers: eventHeadersAsJson,
                 eventPath: eventArgs.RoutingKey,
-                namingPolicyType: namingPolicyType);
+                namingPolicyType: namingPolicyType,
+                cancellationToken: _serviceCancellationToken);
         }
 
         #endregion

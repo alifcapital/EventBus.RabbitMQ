@@ -133,6 +133,10 @@ internal class EventSubscriberCollector(
             foreach (var (_, consumer) in _eventConsumers)
                 await consumer.CreateChannelAndSubscribeReceiverAsync(cancellationToken);
         }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            // The application is stopping while starting, so the error is caused by the shutdown.
+        }
         catch (Exception e)
         {
             _logger.LogError(e, "Error while creating consumers for each queue and start receiving events.");
