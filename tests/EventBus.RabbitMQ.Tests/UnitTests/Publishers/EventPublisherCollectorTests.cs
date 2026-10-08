@@ -15,6 +15,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
     private IServiceProvider _serviceProvider;
     private EventPublisherCollector _publisherCollector;
     private IRabbitMqConnectionManager _rabbitMqConnectionManager;
+    private ILogger<EventPublisherCollector> _logger;
 
     #region SetUp
 
@@ -24,8 +25,9 @@ public class EventPublisherCollectorTests : BaseTestEntity
         _serviceProvider = Substitute.For<IServiceProvider>();
         _serviceProvider.GetService(typeof(RabbitMqOptions))
             .Returns(RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions());
+        _logger = Substitute.For<ILogger<EventPublisherCollector>>();
         _serviceProvider.GetService(typeof(ILogger<EventPublisherCollector>))
-            .Returns(Substitute.For<ILogger<EventPublisherCollector>>());
+            .Returns(_logger);
         _rabbitMqConnectionManager = Substitute.For<IRabbitMqConnectionManager>();
         _serviceProvider.GetService(typeof(IRabbitMqConnectionManager)).Returns(_rabbitMqConnectionManager);
         _publisherCollector = new EventPublisherCollector(_serviceProvider);
@@ -159,6 +161,50 @@ public class EventPublisherCollectorTests : BaseTestEntity
         await rabbitMqConnection.Received(1).CreatePublisherChannelAsync(publisherConfirmation: true, cancellationToken);
     }
 
+    [Test]
+    public async Task CreateExchangeForPublishersAsync_AfterDeclaringExchange_ShouldDisposeChannel()
+    {
+        var channel = Substitute.For<IChannel>();
+        SetupPublisherChannel(Task.FromResult(channel));
+        GetPublishersInfo().Add("FirstEvent", CreatePublisherOptions("FirstExchange"));
+
+        await _publisherCollector.CreateExchangeForPublishersAsync(CancellationToken.None);
+
+        await channel.Received(1).DisposeAsync();
+    }
+
+    [Test]
+    public async Task CreateExchangeForPublishersAsync_WhenFailsWhileStopping_ShouldNotLogErrorAndSkipOtherPublishers()
+    {
+        var rabbitMqConnection =
+            SetupPublisherChannel(Task.FromException<IChannel>(new ObjectDisposedException(nameof(IServiceProvider))));
+        var publishers = GetPublishersInfo();
+        publishers.Add("FirstEvent", CreatePublisherOptions("FirstExchange"));
+        publishers.Add("SecondEvent", CreatePublisherOptions("SecondExchange"));
+
+        await _publisherCollector.CreateExchangeForPublishersAsync(new CancellationToken(canceled: true));
+
+        Assert.That(HasErrorLog(), Is.False);
+        await rabbitMqConnection.Received(1)
+            .CreatePublisherChannelAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task CreateExchangeForPublishersAsync_WhenFailsWithoutStopping_ShouldLogErrorAndContinueWithOtherPublishers()
+    {
+        var rabbitMqConnection =
+            SetupPublisherChannel(Task.FromException<IChannel>(new InvalidOperationException("Broker is unreachable")));
+        var publishers = GetPublishersInfo();
+        publishers.Add("FirstEvent", CreatePublisherOptions("FirstExchange"));
+        publishers.Add("SecondEvent", CreatePublisherOptions("SecondExchange"));
+
+        await _publisherCollector.CreateExchangeForPublishersAsync(CancellationToken.None);
+
+        Assert.That(HasErrorLog(), Is.True);
+        await rabbitMqConnection.Received(2)
+            .CreatePublisherChannelAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
     #endregion
 
     #region CreateRabbitMqChannelAsync
@@ -218,6 +264,40 @@ public class EventPublisherCollectorTests : BaseTestEntity
         return publisherOptions;
     }
     
+    private static EventPublisherOptions CreatePublisherOptions(string exchangeName)
+    {
+        var publisherOptions = new EventPublisherOptions();
+        publisherOptions.SetVirtualHostAndUnassignedSettings(new RabbitMqHostSettings
+        {
+            VirtualHost = "TestVirtualHost",
+            ExchangeName = exchangeName,
+            ExchangeType = "topic"
+        }, nameof(SimplePublishEvent));
+
+        return publisherOptions;
+    }
+
+    /// <summary>
+    /// Sets up the connection of every publisher to return the given channel creation result.
+    /// </summary>
+    private IRabbitMqConnection SetupPublisherChannel(Task<IChannel> channelCreation)
+    {
+        var rabbitMqConnection = Substitute.For<IRabbitMqConnection>();
+        rabbitMqConnection.CreatePublisherChannelAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(channelCreation);
+        _rabbitMqConnectionManager.GetOrCreateConnection(Arg.Any<RabbitMqHostSettings>())
+            .Returns(rabbitMqConnection);
+
+        return rabbitMqConnection;
+    }
+
+    private bool HasErrorLog()
+    {
+        return _logger.ReceivedCalls().Any(call =>
+            call.GetMethodInfo().Name == nameof(ILogger.Log) &&
+            call.GetArguments()[0] is LogLevel.Error);
+    }
+
     private static readonly FieldInfo PublishersField = typeof(EventPublisherCollector)
         .GetField("_publishersConnectionInfo", BindingFlags.NonPublic | BindingFlags.Instance);
     

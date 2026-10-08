@@ -386,6 +386,27 @@ public class EventPublisherManagerTests : BaseTestEntity
     }
 
     [Test]
+    public void Finalize_WhenPublishingCollectedEventFailsWhileApplicationIsStopping_ShouldNotThrowNorLogError()
+    {
+        var applicationLifetime = Substitute.For<IHostApplicationLifetime>();
+        applicationLifetime.ApplicationStopping.Returns(new CancellationToken(canceled: true));
+        _publisherManager.Dispose();
+        _publisherManager = new EventPublisherManager(_logger, _publisherCollector, applicationLifetime);
+        var publishEvent = new SimplePublishEvent();
+        var channel = SetupPublishingChannel(publishEvent, CancellationToken.None);
+        channel.BasicPublishAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<BasicProperties>(),
+                Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromException(new ObjectDisposedException(nameof(IServiceProvider))));
+        _publisherManager.Collect(publishEvent);
+
+        Assert.DoesNotThrow(InvokeFinalizer,
+            "An exception thrown on the finalizer thread terminates the whole application.");
+        Assert.That(HasErrorLog(), Is.False);
+
+        _publisherManager.CleanCollectedEvents();
+    }
+
+    [Test]
     public void Finalize_WhenThereIsACollectedEvent_ShouldStillPublishIt()
     {
         var publishEvent = new SimplePublishEvent();

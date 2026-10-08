@@ -25,6 +25,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     private EventConsumerService _consumerService;
     private ILogger<EventConsumerService> _logger;
     private IRabbitMqConnectionManager _rabbitMqConnectionManager;
+    private IRabbitMqConnection _connection;
     private EventSubscriberOptions _settings;
 
     #region SetUp
@@ -118,6 +119,38 @@ public class EventConsumerServiceTests : BaseTestEntity
         Assert.That(HasLog(LogLevel.Error), Is.False);
     }
 
+    [Test]
+    public async Task StartAndSubscribeReceiverAsync_WhenCreatingChannelFailsAfterStoppingStarted_ShouldNotLogError()
+    {
+        var connection = Substitute.For<IRabbitMqConnection>();
+        connection.CreateConsumerChannelAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IChannel>(new ObjectDisposedException(nameof(IServiceProvider))));
+        _rabbitMqConnectionManager.GetOrCreateConnection(_settings.VirtualHostSettings).Returns(connection);
+        _consumerService = new EventConsumerService(_settings, _serviceProvider, false);
+        await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
+
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+
+        Assert.That(HasLog(LogLevel.Error), Is.False);
+    }
+
+    [Test]
+    public async Task StartAndSubscribeReceiverAsync_WhenCreatingChannelFailsWithoutStopping_ShouldLogError()
+    {
+        var connection = Substitute.For<IRabbitMqConnection>();
+        connection.CreateConsumerChannelAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IChannel>(new InvalidOperationException("Broker is unreachable")));
+        _rabbitMqConnectionManager.GetOrCreateConnection(_settings.VirtualHostSettings).Returns(connection);
+        _consumerService = new EventConsumerService(_settings, _serviceProvider, false);
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(cancellationTokenSource.Token);
+
+        // Stops the background retry loop which is started after the failure.
+        await cancellationTokenSource.CancelAsync();
+        Assert.That(HasLog(LogLevel.Error), Is.True);
+    }
+
     #endregion
 
     #region StopReceivingEventsAsync
@@ -153,6 +186,114 @@ public class EventConsumerServiceTests : BaseTestEntity
 
         Assert.That(channel.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(IChannel.CloseAsync)),
             Is.True);
+    }
+
+    [Test]
+    public async Task StopReceivingEventsAsync_WhenChannelIsAlreadyClosed_ShouldNotCancelConsumerNorCloseChannel()
+    {
+        var channel = SetupConsumerChannel();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        channel.IsOpen.Returns(false);
+
+        await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
+
+        await channel.DidNotReceive()
+            .BasicCancelAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        Assert.That(channel.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(IChannel.CloseAsync)),
+            Is.False);
+    }
+
+    [Test]
+    public async Task StopReceivingEventsAsync_WhenClosingChannelFails_ShouldNotThrow()
+    {
+        var channel = SetupConsumerChannel();
+        channel.CloseAsync(Arg.Any<ushort>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("Channel is broken")));
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+
+        Assert.DoesNotThrowAsync(() => _consumerService.StopReceivingEventsAsync(CancellationToken.None));
+    }
+
+    [Test]
+    public async Task StopReceivingEventsAsync_WhileEventIsBeingHandled_ShouldWaitUntilItIsHandledBeforeClosingChannel()
+    {
+        var (consumerService, channel, storing) = await StartInboxConsumerWithPendingStoringAsync();
+        var receivingTask = InvokeReceivingEventAsync(consumerService);
+
+        var stoppingTask = consumerService.StopReceivingEventsAsync(CancellationToken.None);
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        var isStoppedBeforeEventIsHandled = stoppingTask.IsCompleted;
+        storing.SetResult(true);
+        await receivingTask;
+        await stoppingTask;
+
+        Assert.That(isStoppedBeforeEventIsHandled, Is.False);
+        await channel.Received(1).BasicAckAsync(DeliveryTag, false, Arg.Any<CancellationToken>());
+        Assert.That(channel.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(IChannel.CloseAsync)),
+            Is.True);
+    }
+
+    [Test]
+    public async Task StopReceivingEventsAsync_WhenWaitingForHandlingEventIsCancelled_ShouldLogWarningAndCloseChannel()
+    {
+        var (consumerService, channel, storing) = await StartInboxConsumerWithPendingStoringAsync();
+        var receivingTask = InvokeReceivingEventAsync(consumerService);
+        using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+
+        await consumerService.StopReceivingEventsAsync(cancellationTokenSource.Token);
+
+        Assert.That(HasLog(LogLevel.Warning), Is.True);
+        Assert.That(channel.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(IChannel.CloseAsync)),
+            Is.True);
+        storing.SetResult(true);
+        await receivingTask;
+    }
+
+    #endregion
+
+    #region OnChannelShutdownAsync
+
+    [Test]
+    public async Task OnChannelShutdownAsync_AfterStopping_ShouldNotRecreateChannel()
+    {
+        SetupConsumerChannel();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
+        var reason = new ShutdownEventArgs(ShutdownInitiator.Application, 200, "Goodbye");
+
+        await InvokePrivateMethodAsync(_consumerService, "OnChannelShutdownAsync", reason);
+
+        await _connection.Received(1).CreateConsumerChannelAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task OnChannelShutdownAsync_WithoutStopping_ShouldRecreateChannel()
+    {
+        SetupConsumerChannel();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        var reason = new ShutdownEventArgs(ShutdownInitiator.Peer, 320, "Connection forced");
+
+        await InvokePrivateMethodAsync(_consumerService, "OnChannelShutdownAsync", reason);
+
+        await _connection.Received(2).CreateConsumerChannelAsync(Arg.Any<CancellationToken>());
+    }
+
+    #endregion
+
+    #region OnCallbackExceptionAsync
+
+    [Test]
+    public async Task OnCallbackExceptionAsync_AfterStopping_ShouldNotRecreateChannel()
+    {
+        SetupConsumerChannel();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
+        var eventArgs = new CallbackExceptionEventArgs(new Dictionary<string, object>(),
+            new InvalidOperationException("Callback failed"));
+
+        await InvokePrivateMethodAsync(_consumerService, "OnCallbackExceptionAsync", eventArgs);
+
+        await _connection.Received(1).CreateConsumerChannelAsync(Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -209,6 +350,23 @@ public class EventConsumerServiceTests : BaseTestEntity
         await InvokeReceivingEventAsync(_consumerService);
 
         Assert.That(HasLog(LogLevel.Error), Is.True);
+    }
+
+    [Test]
+    public async Task ReceivingEvent_WithoutInbox_ShouldHandleEventAndAcknowledgeItWithoutCancellationToken()
+    {
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var channel = SetupConsumerChannel();
+        AddSimpleSubscriber(_consumerService);
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(cancellationTokenSource.Token);
+        var scopedServiceProvider = SetupScopedServiceProvider();
+        scopedServiceProvider.GetService(typeof(SimpleEventSubscriberHandler))
+            .Returns(new SimpleEventSubscriberHandler());
+
+        await InvokeReceivingEventAsync(_consumerService);
+
+        scopedServiceProvider.Received(1).GetService(typeof(SimpleEventSubscriberHandler));
+        await channel.Received(1).BasicAckAsync(DeliveryTag, false, CancellationToken.None);
     }
 
     [Test]
@@ -316,6 +474,7 @@ public class EventConsumerServiceTests : BaseTestEntity
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(ConsumerTag));
         _rabbitMqConnectionManager.GetOrCreateConnection(_settings.VirtualHostSettings).Returns(connection);
+        _connection = connection;
         // The consumer resolves its connection while it is being created, so it is created after the connection.
         _consumerService = new EventConsumerService(_settings, _serviceProvider, false);
 
@@ -328,15 +487,56 @@ public class EventConsumerServiceTests : BaseTestEntity
     private TService SetupScopedService<TService>() where TService : class
     {
         var service = Substitute.For<TService>();
-        var scopedServiceProvider = Substitute.For<IServiceProvider>();
+        var scopedServiceProvider = SetupScopedServiceProvider();
         scopedServiceProvider.GetService(typeof(TService)).Returns(service);
+
+        return service;
+    }
+
+    /// <summary>
+    /// Sets up the scope factory of the service provider and returns the service provider of the created scope.
+    /// </summary>
+    private IServiceProvider SetupScopedServiceProvider()
+    {
+        var scopedServiceProvider = Substitute.For<IServiceProvider>();
         var scope = Substitute.For<IServiceScope>();
         scope.ServiceProvider.Returns(scopedServiceProvider);
         var scopeFactory = Substitute.For<IServiceScopeFactory>();
         scopeFactory.CreateScope().Returns(scope);
         _serviceProvider.GetService(typeof(IServiceScopeFactory)).Returns(scopeFactory);
 
-        return service;
+        return scopedServiceProvider;
+    }
+
+    /// <summary>
+    /// Starts an inbox consumer whose storing of the received event does not complete until the returned
+    /// completion source is completed, to simulate an event being handled.
+    /// </summary>
+    private async Task<(EventConsumerService ConsumerService, IChannel Channel, TaskCompletionSource<bool> Storing)>
+        StartInboxConsumerWithPendingStoringAsync()
+    {
+        var channel = SetupConsumerChannel();
+        var consumerService = new EventConsumerService(_settings, _serviceProvider, useInbox: true);
+        AddSimpleSubscriber(consumerService);
+        await consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        var storing = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var inboxEventManager = SetupScopedService<IInboxEventManager>();
+        inboxEventManager.StoreAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<EventProviderType>(),
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<NamingPolicyType>(), Arg.Any<CancellationToken>())
+            .Returns(storing.Task);
+
+        return (consumerService, channel, storing);
+    }
+
+    private static async Task InvokePrivateMethodAsync(EventConsumerService consumerService, string methodName,
+        object eventArgs)
+    {
+        var method = typeof(EventConsumerService)
+            .GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.That(method, Is.Not.Null);
+
+        await (Task)method!.Invoke(consumerService, [null, eventArgs])!;
     }
 
     private void AddSimpleSubscriber(EventConsumerService consumerService)

@@ -289,6 +289,27 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         await consumer.Received(1).StopReceivingEventsAsync(Arg.Any<CancellationToken>());
     }
 
+    [Test]
+    public async Task StopReceivingEventsAsync_WhenConsumerFails_ShouldLogWarning()
+    {
+        var logger = Substitute.For<ILogger<EventSubscriberCollector>>();
+        _serviceProvider.GetService(typeof(ILogger<EventSubscriberCollector>)).Returns(logger);
+        var subscriberCollector = new EventSubscriberCollector(
+            RabbitMqOptionsConstant.CreateDefaultRabbitMqOptions(), _serviceProvider);
+        var failingConsumer = Substitute.For<IEventConsumerService>();
+        failingConsumer.StopReceivingEventsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("Channel is broken")));
+        var eventConsumers =
+            (Dictionary<string, IEventConsumerService>)_eventConsumersField!.GetValue(subscriberCollector)!;
+        eventConsumers.Add("failing", failingConsumer);
+
+        await subscriberCollector.StopReceivingEventsAsync(CancellationToken.None);
+
+        Assert.That(logger.ReceivedCalls().Any(call =>
+            call.GetMethodInfo().Name == nameof(ILogger.Log) &&
+            call.GetArguments()[0] is LogLevel.Warning), Is.True);
+    }
+
     #endregion
 
     #region Helper method
