@@ -312,6 +312,46 @@ public class EventSubscriberCollectorTests : BaseTestEntity
 
     #endregion
 
+    #region GetLoadedSubscribers
+
+    [Test]
+    public void GetLoadedSubscribers_EventsWithSameNameFromDifferentModules_ShouldReturnOneSubscriberWithBothHandlers()
+    {
+        var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
+        {
+            {
+                "TestVirtualHostKey", new RabbitMqHostSettings
+                {
+                    VirtualHost = "TestVirtualHost",
+                    ExchangeName = "TestExchangeName",
+                    QueueName = "TestQueueName"
+                }
+            }
+        };
+        var options = new Action<EventSubscriberOptions>(x => { x.VirtualHostKey = "TestVirtualHostKey"; });
+        _subscriberCollector.AddSubscriber<Domain.Module1.UserCreated, Domain.Module1.UserCreatedSubscriber>(options);
+        _subscriberCollector.AddSubscriber<Domain.Module2.UserCreated, Domain.Module2.UserCreatedSubscriber>(options);
+        _subscriberCollector.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
+
+        var subscribers = _subscriberCollector.GetLoadedSubscribers();
+
+        var subscriber = subscribers.Single(s =>
+            s.Handlers.Any(h => h.HandlerType == typeof(Domain.Module1.UserCreatedSubscriber)));
+        var expectedHandlers = new[]
+        {
+            (typeof(Domain.Module1.UserCreated), typeof(Domain.Module1.UserCreatedSubscriber)),
+            (typeof(Domain.Module2.UserCreated), typeof(Domain.Module2.UserCreatedSubscriber))
+        };
+        Assert.That(subscriber.Handlers.Select(h => (h.EventType, h.HandlerType)), Is.EquivalentTo(expectedHandlers));
+        Assert.That(subscriber.VirtualHostKey, Is.EqualTo("TestVirtualHostKey"));
+        Assert.That(subscriber.QueueName, Is.EqualTo("TestQueueName"));
+        Assert.That(subscriber.RoutingKey, Is.EqualTo($"TestExchangeName.{subscriber.EventTypeName}"));
+        Assert.That(subscriber.VirtualHostSettings.VirtualHost, Is.EqualTo("TestVirtualHost"));
+        Assert.That(subscriber.VirtualHostSettings.ExchangeName, Is.EqualTo("TestExchangeName"));
+    }
+
+    #endregion
+
     #region Helper method
 
     private static readonly FieldInfo SubscribersProperty = typeof(EventSubscriberCollector)

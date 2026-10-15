@@ -2,6 +2,7 @@ using System.Diagnostics;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
@@ -20,6 +21,11 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
 
     private readonly Dictionary<string, EventPublisherOptions> _publishersConnectionInfo = new();
 
+    /// <summary>
+    /// The classes of the registered publishing events by their class names (the same keys as in the settings).
+    /// </summary>
+    private readonly Dictionary<string, Type> _publisherTypes = new();
+
     private readonly IRabbitMqConnectionManager _rabbitMqConnectionManager =
         serviceProvider.GetRequiredService<IRabbitMqConnectionManager>();
 
@@ -29,6 +35,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         where TPublisher : class, IPublishEvent
     {
         var publisherName = typeof(TPublisher).Name;
+        _publisherTypes[publisherName] = typeof(TPublisher);
         if (_publishersConnectionInfo.TryGetValue(publisherName, out var settings))
         {
             options?.Invoke(settings);
@@ -45,6 +52,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings)
     {
         _publishersConnectionInfo[typeOfPublisher.Name] = publisherSettings;
+        _publisherTypes[typeOfPublisher.Name] = typeOfPublisher;
     }
 
     #endregion
@@ -168,5 +176,24 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         }
     }
     
+    #endregion
+
+    #region GetLoadedPublishers
+
+    public IReadOnlyCollection<LoadedPublisherInformation> GetLoadedPublishers()
+    {
+        return _publishersConnectionInfo
+            .Select(publisher => new LoadedPublisherInformation
+            {
+                EventType = _publisherTypes[publisher.Key],
+                EventTypeName = publisher.Value.EventTypeName,
+                RoutingKey = publisher.Value.RoutingKey,
+                VirtualHostKey = publisher.Value.VirtualHostKey,
+                PropertyNamingPolicy = publisher.Value.PropertyNamingPolicy,
+                VirtualHostSettings = LoadedVirtualHostInformation.Create(publisher.Value.VirtualHostSettings)
+            })
+            .ToArray();
+    }
+
     #endregion
 }

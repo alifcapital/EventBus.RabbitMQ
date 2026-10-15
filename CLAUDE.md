@@ -265,6 +265,7 @@ builder.Services.AddRabbitMqEventBus(
 | `IEventSubscriberCollector` | Singleton | Subscriber registry + consumer manager |
 | `IRabbitMqConnectionManager` | Singleton | Connection pool |
 | `RabbitMqOptions` | Singleton | Default settings |
+| `IEventBusConfigurationProvider` | Singleton | Read-only resolved settings of loaded publishers/subscribers (no secrets); registered even when `IsEnabled: false` and returns empty collections then |
 | `StartEventBusServices` | Hosted | Startup wiring |
 | `EventBusNotifier` | Hosted | Config warnings |
 

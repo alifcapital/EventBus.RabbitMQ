@@ -1,8 +1,12 @@
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Extensions;
+using EventBus.RabbitMQ.Information;
 using EventBus.RabbitMQ.Publishers.Managers;
+using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Tests.Domain;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -71,6 +75,46 @@ public class RabbitMqExtensionsTests : BaseTestEntity
         );
 
         Assert.That(result, Is.EquivalentTo(expectedTypes));
+    }
+
+    #endregion
+
+    #region AddRabbitMqEventBus
+
+    [Test]
+    public void AddRabbitMqEventBus_RabbitMqIsDisabled_ShouldRegisterConfigurationProviderWithoutCollectors()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string>
+            {
+                { "RabbitMqSettings:DefaultSettings:IsEnabled", "false" }
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        services.AddRabbitMqEventBus(configuration, [typeof(RabbitMqExtensionsTests).Assembly]);
+
+        Assert.That(services.Any(s => s.ServiceType == typeof(IEventBusConfigurationProvider)), Is.True);
+        Assert.That(services.Any(s => s.ServiceType == typeof(IEventPublisherCollector)), Is.False);
+        Assert.That(services.Any(s => s.ServiceType == typeof(IEventSubscriberCollector)), Is.False);
+    }
+
+    [Test]
+    public void AddRabbitMqEventBus_RabbitMqIsEnabled_ShouldRegisterConfigurationProviderAndCollectors()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string>
+            {
+                { "RabbitMqSettings:DefaultSettings:IsEnabled", "true" }
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        services.AddRabbitMqEventBus(configuration, [typeof(RabbitMqExtensionsTests).Assembly]);
+
+        Assert.That(services.Any(s => s.ServiceType == typeof(IEventBusConfigurationProvider)), Is.True);
+        Assert.That(services.Any(s => s.ServiceType == typeof(IEventPublisherCollector)), Is.True);
+        Assert.That(services.Any(s => s.ServiceType == typeof(IEventSubscriberCollector)), Is.True);
     }
 
     #endregion

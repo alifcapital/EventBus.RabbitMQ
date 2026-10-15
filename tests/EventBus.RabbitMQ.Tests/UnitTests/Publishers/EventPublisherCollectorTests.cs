@@ -249,6 +249,62 @@ public class EventPublisherCollectorTests : BaseTestEntity
 
     #endregion
     
+    #region GetLoadedPublishers
+
+    [Test]
+    public void GetLoadedPublishers_PublisherWithVirtualHostKey_ShouldReturnResolvedSettingsWithEventType()
+    {
+        var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
+        {
+            {
+                "TestVirtualHostKey", new RabbitMqHostSettings
+                {
+                    VirtualHost = "TestVirtualHost",
+                    ExchangeName = "TestExchangeName",
+                    ExchangeType = "topic",
+                    UserName = "TestUser",
+                    Password = "TestPassword"
+                }
+            }
+        };
+        _publisherCollector.AddPublisher(typeof(SimplePublishEvent),
+            new EventPublisherOptions { VirtualHostKey = "TestVirtualHostKey" });
+        _publisherCollector.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
+
+        var publishers = _publisherCollector.GetLoadedPublishers();
+
+        var publisher = publishers.Single();
+        Assert.That(publisher.EventType, Is.EqualTo(typeof(SimplePublishEvent)));
+        Assert.That(publisher.EventTypeName, Is.EqualTo(nameof(SimplePublishEvent)));
+        Assert.That(publisher.RoutingKey, Is.EqualTo($"TestExchangeName.{nameof(SimplePublishEvent)}"));
+        Assert.That(publisher.VirtualHostKey, Is.EqualTo("TestVirtualHostKey"));
+        Assert.That(publisher.VirtualHostSettings.VirtualHost, Is.EqualTo("TestVirtualHost"));
+        Assert.That(publisher.VirtualHostSettings.ExchangeName, Is.EqualTo("TestExchangeName"));
+        Assert.That(publisher.VirtualHostSettings.ExchangeType, Is.EqualTo("topic"));
+    }
+
+    [Test]
+    public void GetLoadedPublishers_PublisherAddedWithGenericMethod_ShouldReturnEventType()
+    {
+        _publisherCollector.AddPublisher<SimplePublishEvent>();
+
+        var publishers = _publisherCollector.GetLoadedPublishers();
+
+        Assert.That(publishers.Single().EventType, Is.EqualTo(typeof(SimplePublishEvent)));
+    }
+
+    [Test]
+    public void GetLoadedPublishers_SettingsAreNotResolvedYet_ShouldReturnPublisherWithoutVirtualHostSettings()
+    {
+        _publisherCollector.AddPublisher<SimplePublishEvent>();
+
+        var publishers = _publisherCollector.GetLoadedPublishers();
+
+        Assert.That(publishers.Single().VirtualHostSettings, Is.Null);
+    }
+
+    #endregion
+
     #region Helper methods
 
     private static EventPublisherOptions CreatePublisherOptions(bool? publisherConfirmation)

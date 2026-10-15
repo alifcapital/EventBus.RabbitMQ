@@ -1,3 +1,4 @@
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using RabbitMQ.Client;
@@ -45,4 +46,9 @@ internal interface IEventPublisherCollector
     /// For printing all loaded publishers information to the logger for investigation purposes.
     /// </summary>
     internal void PrintLoadedPublishersInformation();
+
+    /// <summary>
+    /// Gets the resolved settings of all loaded publishers without the connection secrets.
+    /// </summary>
+    internal IReadOnlyCollection<LoadedPublisherInformation> GetLoadedPublishers();
 }

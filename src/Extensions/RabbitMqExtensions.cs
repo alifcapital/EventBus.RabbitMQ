@@ -3,6 +3,7 @@ using EventBus.RabbitMQ.BackgroundServices;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
+using EventBus.RabbitMQ.Information;
 using EventBus.RabbitMQ.Publishers.Managers;
 using EventBus.RabbitMQ.Publishers.Messaging;
 using EventBus.RabbitMQ.Publishers.Models;
@@ -75,6 +76,7 @@ public static class RabbitMqExtensions
         
         services.AddHostedService<EventBusNotifier>();
         services.AddSingleton(settings.DefaultSettings);
+        services.AddSingleton<IEventBusConfigurationProvider, EventBusConfigurationProvider>();
 
         if (!settings.DefaultSettings.IsEnabled) return;
 
