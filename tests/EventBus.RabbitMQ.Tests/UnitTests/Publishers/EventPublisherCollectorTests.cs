@@ -288,29 +288,22 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     [Test]
-    public void GetPublishersInformation_OutboxIsNotUsed_ShouldReturnPublisherManagerAsHandler()
+    public void GetPublishersInformation_EventHasNoSpecificPublisher_ShouldReturnGlobalPublisherAsHandler()
     {
         _publisherCollector.AddPublisher<SimplePublishEvent>();
-        _publisherCollector.SetMessageBrokerEventPublishers(new Dictionary<Type, Type>
-        {
-            { typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher) }
-        });
 
         var publishers = _publisherCollector.GetPublishersInformation();
 
-        var expectedHandler = EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(EventPublisherManager));
+        var expectedHandler =
+            EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(MessageBrokerEventPublisher));
         Assert.That(publishers.Single().Handler, Is.EqualTo(expectedHandler));
     }
 
     [Test]
-    public void GetPublishersInformation_OutboxIsUsedAndEventHasSpecificPublisher_ShouldReturnSpecificPublisherAsHandler()
+    public void GetPublishersInformation_EventAddedWithGenericMethodHasSpecificPublisher_ShouldReturnSpecificPublisherAsHandler()
     {
-        var publisherCollector = CreatePublisherCollectorWithOutbox();
+        var publisherCollector = CreatePublisherCollectorWithSpecificPublisher();
         publisherCollector.AddPublisher<SimplePublishEvent>();
-        publisherCollector.SetMessageBrokerEventPublishers(new Dictionary<Type, Type>
-        {
-            { typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher) }
-        });
 
         var publishers = publisherCollector.GetPublishersInformation();
 
@@ -320,16 +313,15 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     [Test]
-    public void GetPublishersInformation_OutboxIsUsedAndEventHasNoSpecificPublisher_ShouldReturnGlobalPublisherAsHandler()
+    public void GetPublishersInformation_EventAddedWithTypeHasSpecificPublisher_ShouldReturnSpecificPublisherAsHandler()
     {
-        var publisherCollector = CreatePublisherCollectorWithOutbox();
-        publisherCollector.AddPublisher<SimplePublishEvent>();
-        publisherCollector.SetMessageBrokerEventPublishers(new Dictionary<Type, Type>());
+        var publisherCollector = CreatePublisherCollectorWithSpecificPublisher();
+        publisherCollector.AddPublisher(typeof(SimplePublishEvent), new EventPublisherOptions());
 
         var publishers = publisherCollector.GetPublishersInformation();
 
         var expectedHandler =
-            EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(MessageBrokerEventPublisher));
+            EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher));
         Assert.That(publishers.Single().Handler, Is.EqualTo(expectedHandler));
     }
 
@@ -394,14 +386,14 @@ public class EventPublisherCollectorTests : BaseTestEntity
             call.GetArguments()[0] is LogLevel.Error);
     }
 
-    private EventPublisherCollector CreatePublisherCollectorWithOutbox()
+    private EventPublisherCollector CreatePublisherCollectorWithSpecificPublisher()
     {
-        var serviceProvider = Substitute.For<IServiceProvider>();
-        serviceProvider.GetService(typeof(RabbitMqOptions)).Returns(new RabbitMqOptions { UseOutbox = true });
-        serviceProvider.GetService(typeof(ILogger<EventPublisherCollector>)).Returns(_logger);
-        serviceProvider.GetService(typeof(IRabbitMqConnectionManager)).Returns(_rabbitMqConnectionManager);
+        var specificPublisherTypesByEventType = new Dictionary<Type, Type>
+        {
+            { typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher) }
+        };
 
-        return new EventPublisherCollector(serviceProvider);
+        return new EventPublisherCollector(_serviceProvider, specificPublisherTypesByEventType);
     }
 
     private static readonly FieldInfo PublishersField = typeof(EventPublisherCollector)
@@ -418,6 +410,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         return new PublisherInformation
         {
             EventType = typeof(SimplePublishEvent),
+            PublisherType = typeof(MessageBrokerEventPublisher),
             Settings = CreatePublisherOptions(exchangeName)
         };
     }

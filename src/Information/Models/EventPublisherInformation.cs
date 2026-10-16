@@ -8,13 +8,6 @@ namespace EventBus.RabbitMQ.Information.Models;
 public record EventPublisherInformation
 {
     /// <summary>
-    /// The information of the publishing event and of its handler, which publishes it: the specific outbox publisher
-    /// (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) of the event or the global <c>MessageBrokerEventPublisher</c>
-    /// when the outbox is used, otherwise the <c>EventPublisherManager</c> which publishes it to the RabbitMQ directly.
-    /// </summary>
-    public required EventHandlerInformation Handler { get; init; }
-
-    /// <summary>
     /// The name of the event type which is attached to the published message. It may differ from the class name because
     /// of the event naming policy or a custom name from the configuration.
     /// </summary>
@@ -40,4 +33,10 @@ public record EventPublisherInformation
     /// The resolved settings of the virtual host which is used by the event, or null if they are not resolved yet.
     /// </summary>
     public required RabbitMqVirtualHostInformation VirtualHostSettings { get; init; }
+
+    /// <summary>
+    /// The information of the publishing event and its handler, which publishes it. The publisher can be specific outbox publisher
+    /// (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) of the event or the global <c>MessageBrokerEventPublisher</c>.
+    /// </summary>
+    public required EventHandlerInformation Handler { get; init; }
 }

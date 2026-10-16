@@ -13,7 +13,9 @@ using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Publishers.Managers;
 
-internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEventPublisherCollector
+internal class EventPublisherCollector(
+    IServiceProvider serviceProvider,
+    IReadOnlyDictionary<Type, Type> specificPublisherTypesByEventType = null) : IEventPublisherCollector
 {
     private readonly RabbitMqOptions _defaultSettings = serviceProvider.GetRequiredService<RabbitMqOptions>();
 
@@ -46,6 +48,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
             _publishers.Add(publisherName, new PublisherInformation
             {
                 EventType = typeof(TPublisher),
+                PublisherType = GetPublisherType(typeof(TPublisher)),
                 Settings = settings
             });
         }
@@ -56,8 +59,19 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         _publishers[typeOfPublisher.Name] = new PublisherInformation
         {
             EventType = typeOfPublisher,
+            PublisherType = GetPublisherType(typeOfPublisher),
             Settings = publisherSettings
         };
+    }
+
+    /// <summary>
+    /// Gets the publisher of the event: its specific outbox publisher if it exists, otherwise the global one.
+    /// </summary>
+    /// <param name="eventType">The type of the publishing event.</param>
+    /// <returns>The type of the publisher of the event.</returns>
+    private Type GetPublisherType(Type eventType)
+    {
+        return specificPublisherTypesByEventType?.GetValueOrDefault(eventType) ?? typeof(MessageBrokerEventPublisher);
     }
 
     #endregion
@@ -77,21 +91,6 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 : virtualHostsSettings.GetValueOrDefault(eventSettings.VirtualHostKey, _defaultSettings);
             eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, eventTypeName);
         }
-    }
-
-    #endregion
-
-    #region SetMessageBrokerEventPublishers
-
-    /// <summary>
-    /// Sets the specific outbox publishers (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) of the registered events.
-    /// </summary>
-    /// <param name="publisherTypesByEventType">The types of the specific outbox publishers by the types of their events.</param>
-    public void SetMessageBrokerEventPublishers(Dictionary<Type, Type> publisherTypesByEventType)
-    {
-        foreach (var publisherInformation in _publishers.Values)
-            publisherInformation.MessageBrokerEventPublisherType =
-                publisherTypesByEventType.GetValueOrDefault(publisherInformation.EventType);
     }
 
     #endregion
@@ -211,28 +210,16 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 var settings = publisherInformation.Settings;
                 return new EventPublisherInformation
                 {
-                    Handler = EventHandlerInformation.Create(publisherInformation.EventType,
-                        GetEventPublisherType(publisherInformation)),
                     EventTypeName = settings.EventTypeName,
                     RoutingKey = settings.RoutingKey,
                     VirtualHostKey = settings.VirtualHostKey,
                     PropertyNamingPolicy = settings.PropertyNamingPolicy,
-                    VirtualHostSettings = RabbitMqVirtualHostInformation.Create(settings.VirtualHostSettings)
+                    VirtualHostSettings = RabbitMqVirtualHostInformation.Create(settings.VirtualHostSettings),
+                    Handler = EventHandlerInformation.Create(publisherInformation.EventType,
+                        publisherInformation.PublisherType)
                 };
             })
             .ToArray();
-    }
-
-    /// <summary>
-    /// Gets the type which publishes the event: the specific outbox publisher of the event or the global one when the
-    /// outbox is used, otherwise the publisher manager which publishes the event to the RabbitMQ directly.
-    /// </summary>
-    private Type GetEventPublisherType(PublisherInformation publisherInformation)
-    {
-        if (!_defaultSettings.UseOutbox)
-            return typeof(EventPublisherManager);
-
-        return publisherInformation.MessageBrokerEventPublisherType ?? typeof(MessageBrokerEventPublisher);
     }
 
     #endregion

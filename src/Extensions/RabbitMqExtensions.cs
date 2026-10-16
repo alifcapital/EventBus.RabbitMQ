@@ -89,7 +89,8 @@ public static class RabbitMqExtensions
 
         services.AddSingleton<IEventPublisherCollector>(serviceProvider =>
         {
-            var publisherManager = new EventPublisherCollector(serviceProvider);
+            var publisherManager =
+                new EventPublisherCollector(serviceProvider, GetMessageBrokerEventPublisherTypes(assemblies));
 
             var publishers = settings.Publishers ?? new Dictionary<string, EventPublisherOptions>();
             var allPublisherTypes = GetPublisherTypes(assemblies);
@@ -99,7 +100,6 @@ public static class RabbitMqExtensions
             eventPublisherManagerOptions?.Invoke(publisherManagerOptions);
 
             publisherManager.SetVirtualHostAndOwnSettingsOfPublishers(settings.VirtualHostSettings);
-            publisherManager.SetMessageBrokerEventPublishers(GetMessageBrokerEventPublisherTypes(assemblies));
 
             return publisherManager;
         });
