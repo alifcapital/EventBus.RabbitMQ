@@ -36,22 +36,26 @@ public class EventBusConfigurationProviderTests : BaseTestEntity
     }
 
     [Test]
-    public void GetPublishers_CollectorIsRegistered_ShouldReturnLoadedPublishersOfCollector()
+    public void GetPublishers_CollectorIsRegistered_ShouldReturnPublishersInformationOfCollector()
     {
-        var loadedPublisher = new LoadedPublisherInformation
+        var publisherInformation = new EventPublisherInformation
         {
-            EventType = typeof(SimplePublishEvent),
+            EventType = new EventTypeInformation
+            {
+                EventTypeName = nameof(SimplePublishEvent),
+                EventTypeNamespace = typeof(SimplePublishEvent).Namespace
+            },
             EventTypeName = nameof(SimplePublishEvent),
             RoutingKey = "TestRoutingKey",
             VirtualHostSettings = null
         };
         var publisherCollector = Substitute.For<IEventPublisherCollector>();
-        publisherCollector.GetLoadedPublishers().Returns([loadedPublisher]);
+        publisherCollector.GetPublishersInformation().Returns([publisherInformation]);
         _serviceProvider.GetService(typeof(IEventPublisherCollector)).Returns(publisherCollector);
 
         var publishers = _provider.GetPublishers();
 
-        Assert.That(publishers, Is.EquivalentTo(new[] { loadedPublisher }));
+        Assert.That(publishers, Is.EquivalentTo(new[] { publisherInformation }));
     }
 
     #endregion
@@ -69,9 +73,9 @@ public class EventBusConfigurationProviderTests : BaseTestEntity
     }
 
     [Test]
-    public void GetSubscribers_CollectorIsRegistered_ShouldReturnLoadedSubscribersOfCollector()
+    public void GetSubscribers_CollectorIsRegistered_ShouldReturnSubscribersInformationOfCollector()
     {
-        var loadedSubscriber = new LoadedSubscriberInformation
+        var subscriberInformation = new EventSubscriberInformation
         {
             EventTypeName = nameof(SimpleSubscribeEvent),
             RoutingKey = "TestRoutingKey",
@@ -79,20 +83,22 @@ public class EventBusConfigurationProviderTests : BaseTestEntity
             VirtualHostSettings = null,
             Handlers =
             [
-                new LoadedEventHandlerInformation
+                new EventHandlerInformation
                 {
-                    EventType = typeof(SimpleSubscribeEvent),
-                    HandlerType = typeof(SimpleEventSubscriberHandler)
+                    EventTypeName = nameof(SimpleSubscribeEvent),
+                    EventTypeNamespace = typeof(SimpleSubscribeEvent).Namespace,
+                    HandlerTypeName = nameof(SimpleEventSubscriberHandler),
+                    HandlerTypeNamespace = typeof(SimpleEventSubscriberHandler).Namespace
                 }
             ]
         };
         var subscriberCollector = Substitute.For<IEventSubscriberCollector>();
-        subscriberCollector.GetLoadedSubscribers().Returns([loadedSubscriber]);
+        subscriberCollector.GetSubscribersInformation().Returns([subscriberInformation]);
         _serviceProvider.GetService(typeof(IEventSubscriberCollector)).Returns(subscriberCollector);
 
         var subscribers = _provider.GetSubscribers();
 
-        Assert.That(subscribers, Is.EquivalentTo(new[] { loadedSubscriber }));
+        Assert.That(subscribers, Is.EquivalentTo(new[] { subscriberInformation }));
     }
 
     #endregion

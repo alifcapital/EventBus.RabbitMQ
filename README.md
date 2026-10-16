@@ -641,7 +641,7 @@ public class EventConfigurationsController(IEventBusConfigurationProvider config
     public IActionResult GetPublishers()
     {
         var publishers = configurationProvider.GetPublishers()
-            .Select(p => new { EventName = p.EventType.Name, p.EventTypeName, p.RoutingKey, p.VirtualHostSettings });
+            .Select(p => new { EventName = p.EventType.EventTypeName, p.EventTypeName, p.RoutingKey, p.VirtualHostSettings });
 
         return Ok(publishers);
     }
@@ -653,7 +653,7 @@ public class EventConfigurationsController(IEventBusConfigurationProvider config
             .Select(s => new
             {
                 s.EventTypeName, s.RoutingKey, s.QueueName, s.VirtualHostSettings,
-                Handlers = s.Handlers.Select(h => h.HandlerType.FullName)
+                Handlers = s.Handlers.Select(h => $"{h.HandlerTypeNamespace}.{h.HandlerTypeName}")
             });
 
         return Ok(subscribers);
@@ -661,14 +661,14 @@ public class EventConfigurationsController(IEventBusConfigurationProvider config
 }
 ```
 
-> The models contain `System.Type` properties (`EventType`, `HandlerType`) so that you can, for example, find the assembly of an event. `System.Text.Json` cannot serialize `Type`, so map them to names before returning them from an API.
+> The models contain only plain values: the classes of the events are described by the same `EventTypeInformation` structure (name and namespace) for both publishers and subscribers, and `EventHandlerInformation` extends it with the name and namespace of the handler, so the models can be returned from an API as they are.
 
 | Method | What it returns |
 |---|---|
-| `GetPublishers()` | A `LoadedPublisherInformation` for each publishing event: its class, event type name, routing key, virtual host key, property naming policy and the settings of its virtual host. |
-| `GetSubscribers()` | A `LoadedSubscriberInformation` for each subscribed event name: its event type name, routing key, queue name, virtual host key, property naming policy, the settings of its virtual host and all its handlers. The subscribers are grouped by the event type name, so the handlers may handle event classes of different assemblies (for example, of different modules). |
+| `GetPublishers()` | An `EventPublisherInformation` for each publishing event: the name and namespace of its class, event type name, routing key, virtual host key, property naming policy and the settings of its virtual host. |
+| `GetSubscribers()` | An `EventSubscriberInformation` for each subscribed event name: its event type name, routing key, queue name, virtual host key, property naming policy, the settings of its virtual host and all its handlers (the names and namespaces of the handler and of the event class it handles). The subscribers are grouped by the event type name, so the handlers may handle event classes of different assemblies (for example, of different modules). |
 
-The settings of the virtual host (`LoadedVirtualHostInformation`) contain only the virtual host, exchange name and type, event naming policy, publisher confirmation, TLS flag and the queue/exchange arguments. The host name, port, user name, password and paths of the client certificate are not returned, so the result is safe to show to a user.
+The settings of the virtual host (`RabbitMqVirtualHostInformation`) contain only the virtual host, exchange name and type, event naming policy, publisher confirmation, TLS flag and the queue/exchange arguments. The host name, port, user name, password and paths of the client certificate are not returned, so the result is safe to show to a user.
 
 The service is registered even if the RabbitMQ is disabled (`IsEnabled: false`); in that case both methods return an empty collection.
 

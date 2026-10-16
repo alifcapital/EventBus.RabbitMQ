@@ -3,14 +3,14 @@ using EventStorage.Models;
 namespace EventBus.RabbitMQ.Information.Models;
 
 /// <summary>
-/// The resolved settings of a loaded publisher (publishing event).
+/// The settings structure of publishing event including publisher information.
 /// </summary>
-public record LoadedPublisherInformation
+public record EventPublisherInformation
 {
     /// <summary>
-    /// The class of the publishing event.
+    /// The information of the class of the publishing event.
     /// </summary>
-    public required Type EventType { get; init; }
+    public required EventTypeInformation EventType { get; init; }
 
     /// <summary>
     /// The name of the event type which is attached to the published message. It may differ from the class name because
@@ -37,5 +37,5 @@ public record LoadedPublisherInformation
     /// <summary>
     /// The resolved settings of the virtual host which is used by the event, or null if they are not resolved yet.
     /// </summary>
-    public required LoadedVirtualHostInformation VirtualHostSettings { get; init; }
+    public required RabbitMqVirtualHostInformation VirtualHostSettings { get; init; }
 }

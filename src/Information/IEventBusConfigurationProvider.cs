@@ -12,11 +12,11 @@ public interface IEventBusConfigurationProvider
     /// Gets the resolved settings of all loaded publishers.
     /// </summary>
     /// <returns>The loaded publishers, or an empty collection if the RabbitMQ is disabled.</returns>
-    IReadOnlyCollection<LoadedPublisherInformation> GetPublishers();
+    IReadOnlyCollection<EventPublisherInformation> GetPublishers();
 
     /// <summary>
     /// Gets the resolved settings of all loaded subscribers with their handlers.
     /// </summary>
     /// <returns>The loaded subscribers, or an empty collection if the RabbitMQ is disabled.</returns>
-    IReadOnlyCollection<LoadedSubscriberInformation> GetSubscribers();
+    IReadOnlyCollection<EventSubscriberInformation> GetSubscribers();
 }

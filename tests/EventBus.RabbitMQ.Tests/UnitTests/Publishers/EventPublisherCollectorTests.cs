@@ -2,6 +2,7 @@ using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Publishers.Managers;
+using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
 using Microsoft.Extensions.Logging;
@@ -49,7 +50,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         // Assert
         var publishers = GetPublishersInfo();
         Assert.That(publishers.ContainsKey(nameof(SimplePublishEvent)), Is.True);
-        Assert.That(publishers[nameof(SimplePublishEvent)].RoutingKey, Is.EqualTo("TestRoutingKey"));
+        Assert.That(publishers[nameof(SimplePublishEvent)].Settings.RoutingKey, Is.EqualTo("TestRoutingKey"));
     }
 
     [Test]
@@ -65,7 +66,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         // Assert
         var publishers = GetPublishersInfo();
         Assert.That(publishers.ContainsKey(nameof(SimplePublishEvent)), Is.True);
-        Assert.That(publishers[nameof(SimplePublishEvent)].RoutingKey, Is.EqualTo("TestRoutingKeyUpdated"));
+        Assert.That(publishers[nameof(SimplePublishEvent)].Settings.RoutingKey, Is.EqualTo("TestRoutingKeyUpdated"));
     }
 
     [Test]
@@ -84,7 +85,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         // Assert
         var publishers = GetPublishersInfo();
         Assert.That(publishers.ContainsKey(nameof(SimplePublishEvent)), Is.True);
-        Assert.That(publishers[nameof(SimplePublishEvent)].RoutingKey, Is.EqualTo("TestRoutingKey"));
+        Assert.That(publishers[nameof(SimplePublishEvent)].Settings.RoutingKey, Is.EqualTo("TestRoutingKey"));
     }
 
     #endregion
@@ -115,7 +116,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         // Assert
         var publishers = GetPublishersInfo();
         Assert.That(publishers.ContainsKey(nameof(SimplePublishEvent)), Is.True);
-        Assert.That(publishers[nameof(SimplePublishEvent)].VirtualHostSettings.VirtualHost, Is.EqualTo("TestVirtualHost"));
+        Assert.That(publishers[nameof(SimplePublishEvent)].Settings.VirtualHostSettings.VirtualHost, Is.EqualTo("TestVirtualHost"));
     }
 
     #endregion
@@ -166,7 +167,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
     {
         var channel = Substitute.For<IChannel>();
         SetupPublisherChannel(Task.FromResult(channel));
-        GetPublishersInfo().Add("FirstEvent", CreatePublisherOptions("FirstExchange"));
+        GetPublishersInfo().Add("FirstEvent", CreatePublisherInformation("FirstExchange"));
 
         await _publisherCollector.CreateExchangeForPublishersAsync(CancellationToken.None);
 
@@ -179,8 +180,8 @@ public class EventPublisherCollectorTests : BaseTestEntity
         var rabbitMqConnection =
             SetupPublisherChannel(Task.FromException<IChannel>(new ObjectDisposedException(nameof(IServiceProvider))));
         var publishers = GetPublishersInfo();
-        publishers.Add("FirstEvent", CreatePublisherOptions("FirstExchange"));
-        publishers.Add("SecondEvent", CreatePublisherOptions("SecondExchange"));
+        publishers.Add("FirstEvent", CreatePublisherInformation("FirstExchange"));
+        publishers.Add("SecondEvent", CreatePublisherInformation("SecondExchange"));
 
         await _publisherCollector.CreateExchangeForPublishersAsync(new CancellationToken(canceled: true));
 
@@ -195,8 +196,8 @@ public class EventPublisherCollectorTests : BaseTestEntity
         var rabbitMqConnection =
             SetupPublisherChannel(Task.FromException<IChannel>(new InvalidOperationException("Broker is unreachable")));
         var publishers = GetPublishersInfo();
-        publishers.Add("FirstEvent", CreatePublisherOptions("FirstExchange"));
-        publishers.Add("SecondEvent", CreatePublisherOptions("SecondExchange"));
+        publishers.Add("FirstEvent", CreatePublisherInformation("FirstExchange"));
+        publishers.Add("SecondEvent", CreatePublisherInformation("SecondExchange"));
 
         await _publisherCollector.CreateExchangeForPublishersAsync(CancellationToken.None);
 
@@ -249,10 +250,10 @@ public class EventPublisherCollectorTests : BaseTestEntity
 
     #endregion
     
-    #region GetLoadedPublishers
+    #region GetPublishersInformation
 
     [Test]
-    public void GetLoadedPublishers_PublisherWithVirtualHostKey_ShouldReturnResolvedSettingsWithEventType()
+    public void GetPublishersInformation_PublisherWithVirtualHostKey_ShouldReturnResolvedSettingsWithEventType()
     {
         var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
         {
@@ -271,10 +272,11 @@ public class EventPublisherCollectorTests : BaseTestEntity
             new EventPublisherOptions { VirtualHostKey = "TestVirtualHostKey" });
         _publisherCollector.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
 
-        var publishers = _publisherCollector.GetLoadedPublishers();
+        var publishers = _publisherCollector.GetPublishersInformation();
 
         var publisher = publishers.Single();
-        Assert.That(publisher.EventType, Is.EqualTo(typeof(SimplePublishEvent)));
+        Assert.That(publisher.EventType.EventTypeName, Is.EqualTo(nameof(SimplePublishEvent)));
+        Assert.That(publisher.EventType.EventTypeNamespace, Is.EqualTo(typeof(SimplePublishEvent).Namespace));
         Assert.That(publisher.EventTypeName, Is.EqualTo(nameof(SimplePublishEvent)));
         Assert.That(publisher.RoutingKey, Is.EqualTo($"TestExchangeName.{nameof(SimplePublishEvent)}"));
         Assert.That(publisher.VirtualHostKey, Is.EqualTo("TestVirtualHostKey"));
@@ -284,21 +286,23 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     [Test]
-    public void GetLoadedPublishers_PublisherAddedWithGenericMethod_ShouldReturnEventType()
+    public void GetPublishersInformation_PublisherAddedWithGenericMethod_ShouldReturnEventType()
     {
         _publisherCollector.AddPublisher<SimplePublishEvent>();
 
-        var publishers = _publisherCollector.GetLoadedPublishers();
+        var publishers = _publisherCollector.GetPublishersInformation();
 
-        Assert.That(publishers.Single().EventType, Is.EqualTo(typeof(SimplePublishEvent)));
+        var eventType = publishers.Single().EventType;
+        Assert.That(eventType.EventTypeName, Is.EqualTo(nameof(SimplePublishEvent)));
+        Assert.That(eventType.EventTypeNamespace, Is.EqualTo(typeof(SimplePublishEvent).Namespace));
     }
 
     [Test]
-    public void GetLoadedPublishers_SettingsAreNotResolvedYet_ShouldReturnPublisherWithoutVirtualHostSettings()
+    public void GetPublishersInformation_SettingsAreNotResolvedYet_ShouldReturnPublisherWithoutVirtualHostSettings()
     {
         _publisherCollector.AddPublisher<SimplePublishEvent>();
 
-        var publishers = _publisherCollector.GetLoadedPublishers();
+        var publishers = _publisherCollector.GetPublishersInformation();
 
         Assert.That(publishers.Single().VirtualHostSettings, Is.Null);
     }
@@ -355,12 +359,21 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     private static readonly FieldInfo PublishersField = typeof(EventPublisherCollector)
-        .GetField("_publishersConnectionInfo", BindingFlags.NonPublic | BindingFlags.Instance);
+        .GetField("_publishers", BindingFlags.NonPublic | BindingFlags.Instance);
     
-    Dictionary<string, EventPublisherOptions> GetPublishersInfo()
+    Dictionary<string, PublisherInformation> GetPublishersInfo()
     {
-        var publishers = (Dictionary<string, EventPublisherOptions>)PublishersField?.GetValue(_publisherCollector)!;
+        var publishers = (Dictionary<string, PublisherInformation>)PublishersField?.GetValue(_publisherCollector)!;
         return publishers;
+    }
+
+    private static PublisherInformation CreatePublisherInformation(string exchangeName)
+    {
+        return new PublisherInformation
+        {
+            EventType = typeof(SimplePublishEvent),
+            Settings = CreatePublisherOptions(exchangeName)
+        };
     }
 
     #endregion

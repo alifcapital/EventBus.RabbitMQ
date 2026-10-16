@@ -11,17 +11,17 @@ namespace EventBus.RabbitMQ.Information;
 /// </summary>
 internal class EventBusConfigurationProvider(IServiceProvider serviceProvider) : IEventBusConfigurationProvider
 {
-    public IReadOnlyCollection<LoadedPublisherInformation> GetPublishers()
+    public IReadOnlyCollection<EventPublisherInformation> GetPublishers()
     {
         var publisherCollector = serviceProvider.GetService<IEventPublisherCollector>();
 
-        return publisherCollector?.GetLoadedPublishers() ?? [];
+        return publisherCollector?.GetPublishersInformation() ?? [];
     }
 
-    public IReadOnlyCollection<LoadedSubscriberInformation> GetSubscribers()
+    public IReadOnlyCollection<EventSubscriberInformation> GetSubscribers()
     {
         var subscriberCollector = serviceProvider.GetService<IEventSubscriberCollector>();
 
-        return subscriberCollector?.GetLoadedSubscribers() ?? [];
+        return subscriberCollector?.GetSubscribersInformation() ?? [];
     }
 }

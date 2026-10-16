@@ -1,5 +1,6 @@
 using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Subscribers.Consumers;
 using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Subscribers.Models;
@@ -312,10 +313,10 @@ public class EventSubscriberCollectorTests : BaseTestEntity
 
     #endregion
 
-    #region GetLoadedSubscribers
+    #region GetSubscribersInformation
 
     [Test]
-    public void GetLoadedSubscribers_EventsWithSameNameFromDifferentModules_ShouldReturnOneSubscriberWithBothHandlers()
+    public void GetSubscribersInformation_EventsWithSameNameFromDifferentModules_ShouldReturnOneSubscriberWithBothHandlers()
     {
         var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
         {
@@ -333,16 +334,16 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         _subscriberCollector.AddSubscriber<Domain.Module2.UserCreated, Domain.Module2.UserCreatedSubscriber>(options);
         _subscriberCollector.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
 
-        var subscribers = _subscriberCollector.GetLoadedSubscribers();
+        var subscribers = _subscriberCollector.GetSubscribersInformation();
 
         var subscriber = subscribers.Single(s =>
-            s.Handlers.Any(h => h.HandlerType == typeof(Domain.Module1.UserCreatedSubscriber)));
+            s.Handlers.Any(h => h.HandlerTypeNamespace == typeof(Domain.Module1.UserCreatedSubscriber).Namespace));
         var expectedHandlers = new[]
         {
-            (typeof(Domain.Module1.UserCreated), typeof(Domain.Module1.UserCreatedSubscriber)),
-            (typeof(Domain.Module2.UserCreated), typeof(Domain.Module2.UserCreatedSubscriber))
+            EventHandlerInformation.Create(typeof(Domain.Module1.UserCreated), typeof(Domain.Module1.UserCreatedSubscriber)),
+            EventHandlerInformation.Create(typeof(Domain.Module2.UserCreated), typeof(Domain.Module2.UserCreatedSubscriber))
         };
-        Assert.That(subscriber.Handlers.Select(h => (h.EventType, h.HandlerType)), Is.EquivalentTo(expectedHandlers));
+        Assert.That(subscriber.Handlers, Is.EquivalentTo(expectedHandlers));
         Assert.That(subscriber.VirtualHostKey, Is.EqualTo("TestVirtualHostKey"));
         Assert.That(subscriber.QueueName, Is.EqualTo("TestQueueName"));
         Assert.That(subscriber.RoutingKey, Is.EqualTo($"TestExchangeName.{subscriber.EventTypeName}"));

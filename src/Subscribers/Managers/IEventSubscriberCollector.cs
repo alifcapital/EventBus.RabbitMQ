@@ -36,7 +36,8 @@ internal interface IEventSubscriberCollector
     internal void PrintLoadedSubscribersInformation();
 
     /// <summary>
-    /// Gets the resolved settings of all loaded subscribers with their handlers, without the connection secrets.
+    /// Gets the resolved settings of all registered subscribers including the information of their handlers,
+    /// without the connection secrets.
     /// </summary>
-    internal IReadOnlyCollection<LoadedSubscriberInformation> GetLoadedSubscribers();
+    internal IReadOnlyCollection<EventSubscriberInformation> GetSubscribersInformation();
 }

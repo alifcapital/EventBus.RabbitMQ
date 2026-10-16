@@ -238,28 +238,25 @@ internal class EventSubscriberCollector(
 
     #endregion
 
-    #region GetLoadedSubscribers
+    #region GetSubscribersInformation
 
-    public IReadOnlyCollection<LoadedSubscriberInformation> GetLoadedSubscribers()
+    public IReadOnlyCollection<EventSubscriberInformation> GetSubscribersInformation()
     {
         return Subscribers.Values
             .Select(subscribersInformation =>
             {
                 var settings = subscribersInformation.Settings;
-                return new LoadedSubscriberInformation
+                return new EventSubscriberInformation
                 {
                     EventTypeName = settings.EventTypeName,
                     RoutingKey = settings.RoutingKey,
                     QueueName = settings.QueueName,
                     VirtualHostKey = settings.VirtualHostKey,
                     PropertyNamingPolicy = settings.PropertyNamingPolicy,
-                    VirtualHostSettings = LoadedVirtualHostInformation.Create(settings.VirtualHostSettings),
+                    VirtualHostSettings = RabbitMqVirtualHostInformation.Create(settings.VirtualHostSettings),
                     Handlers = subscribersInformation.Subscribers
-                        .Select(subscriber => new LoadedEventHandlerInformation
-                        {
-                            EventType = subscriber.EventType,
-                            HandlerType = subscriber.EventSubscriberType
-                        })
+                        .Select(subscriber =>
+                            EventHandlerInformation.Create(subscriber.EventType, subscriber.EventSubscriberType))
                         .ToArray()
                 };
             })

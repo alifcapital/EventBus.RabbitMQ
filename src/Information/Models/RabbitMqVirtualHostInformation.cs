@@ -4,11 +4,11 @@ using EventStorage.Models;
 namespace EventBus.RabbitMQ.Information.Models;
 
 /// <summary>
-/// The resolved settings of the virtual host which is used by a loaded publisher or subscriber.
+/// The resolved settings of the virtual host which is used by a publisher or subscriber.
 /// It intentionally does not contain the connection secrets and the address of the server (host name, port, user name,
 /// password and paths of the client certificate), so it is safe to show it to a user.
 /// </summary>
-public record LoadedVirtualHostInformation
+public record RabbitMqVirtualHostInformation
 {
     /// <summary>
     /// The name of the virtual host on the RabbitMQ server.
@@ -50,17 +50,19 @@ public record LoadedVirtualHostInformation
     /// </summary>
     public IReadOnlyDictionary<string, object> ExchangeArguments { get; init; } = new Dictionary<string, object>();
 
+    #region Create
+
     /// <summary>
     /// Creates the information from the resolved settings of the virtual host by skipping the connection secrets.
     /// </summary>
     /// <param name="settings">The resolved settings of the virtual host.</param>
     /// <returns>The information of the virtual host, or null if the settings are not resolved yet.</returns>
-    internal static LoadedVirtualHostInformation Create(RabbitMqHostSettings settings)
+    internal static RabbitMqVirtualHostInformation Create(RabbitMqHostSettings settings)
     {
         if (settings is null)
             return null;
 
-        return new LoadedVirtualHostInformation
+        return new RabbitMqVirtualHostInformation
         {
             VirtualHost = settings.VirtualHost,
             ExchangeName = settings.ExchangeName,
@@ -72,4 +74,6 @@ public record LoadedVirtualHostInformation
             ExchangeArguments = new Dictionary<string, object>(settings.ExchangeArguments ?? [])
         };
     }
+
+    #endregion
 }

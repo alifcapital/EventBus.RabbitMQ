@@ -48,7 +48,8 @@ internal interface IEventPublisherCollector
     internal void PrintLoadedPublishersInformation();
 
     /// <summary>
-    /// Gets the resolved settings of all loaded publishers without the connection secrets.
+    /// Gets the resolved settings of all registered publishers including the information of their event classes,
+    /// without the connection secrets.
     /// </summary>
-    internal IReadOnlyCollection<LoadedPublisherInformation> GetLoadedPublishers();
+    internal IReadOnlyCollection<EventPublisherInformation> GetPublishersInformation();
 }

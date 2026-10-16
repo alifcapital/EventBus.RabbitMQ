@@ -3,11 +3,11 @@ using EventStorage.Models;
 namespace EventBus.RabbitMQ.Information.Models;
 
 /// <summary>
-/// The resolved settings of a loaded subscriber (subscribed event) with all its handlers.
+/// The settings structure of subscribed event including its all handlers information.
 /// The subscribers are grouped by the event type name, and a received message is passed to every handler of that name,
 /// so the handlers may handle event classes of different assemblies (for example, of different modules).
 /// </summary>
-public record LoadedSubscriberInformation
+public record EventSubscriberInformation
 {
     /// <summary>
     /// The name of the event type which is attached to a received message and is used for finding its handlers.
@@ -38,10 +38,10 @@ public record LoadedSubscriberInformation
     /// <summary>
     /// The resolved settings of the virtual host which is used by the event, or null if they are not resolved yet.
     /// </summary>
-    public required LoadedVirtualHostInformation VirtualHostSettings { get; init; }
+    public required RabbitMqVirtualHostInformation VirtualHostSettings { get; init; }
 
     /// <summary>
-    /// All handlers of the event with the event classes they handle.
+    /// All handlers of the event with the information of the event classes they handle.
     /// </summary>
-    public required IReadOnlyList<LoadedEventHandlerInformation> Handlers { get; init; }
+    public required IReadOnlyList<EventHandlerInformation> Handlers { get; init; }
 }
