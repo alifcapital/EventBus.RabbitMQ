@@ -15,6 +15,7 @@ using EventBus.RabbitMQ.Subscribers.Options;
 using EventStorage.Configurations;
 using EventStorage.Extensions;
 using EventStorage.Inbox.EventArgs;
+using EventStorage.Outbox.Providers.EventProviders;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -98,6 +99,7 @@ public static class RabbitMqExtensions
             eventPublisherManagerOptions?.Invoke(publisherManagerOptions);
 
             publisherManager.SetVirtualHostAndOwnSettingsOfPublishers(settings.VirtualHostSettings);
+            publisherManager.SetMessageBrokerEventPublishers(GetMessageBrokerEventPublisherTypes(assemblies));
 
             return publisherManager;
         });
@@ -176,6 +178,31 @@ public static class RabbitMqExtensions
 
         return publisherTypes;
 
+    }
+
+    /// <summary>
+    /// Gets the specific outbox publishers (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) from the assemblies.
+    /// </summary>
+    /// <param name="assemblies">Assemblies to find the outbox publishers</param>
+    /// <returns>The types of the outbox publishers by the types of the events they publish</returns>
+    internal static Dictionary<Type, Type> GetMessageBrokerEventPublisherTypes(Assembly[] assemblies)
+    {
+        var publisherTypesByEventType = new Dictionary<Type, Type>();
+        if (assemblies is null) return publisherTypesByEventType;
+
+        var genericPublisherType = typeof(IMessageBrokerEventPublisher<>);
+        foreach (var type in assemblies.SelectMany(a => a.GetTypes())
+                     .Where(t => t is { IsClass: true, IsAbstract: false }))
+        {
+            foreach (var implementedInterface in type.GetInterfaces())
+            {
+                if (implementedInterface.IsGenericType &&
+                    implementedInterface.GetGenericTypeDefinition() == genericPublisherType)
+                    publisherTypesByEventType.TryAdd(implementedInterface.GetGenericArguments()[0], type);
+            }
+        }
+
+        return publisherTypesByEventType;
     }
 
     private static void RegisterAllPublishers(EventPublisherCollector publisherCollector,

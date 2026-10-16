@@ -4,6 +4,7 @@ using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
 using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Instrumentation.Trace;
+using EventBus.RabbitMQ.Publishers.Messaging;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using Microsoft.Extensions.DependencyInjection;
@@ -76,6 +77,21 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 : virtualHostsSettings.GetValueOrDefault(eventSettings.VirtualHostKey, _defaultSettings);
             eventSettings.SetVirtualHostAndUnassignedSettings(virtualHostSettings, eventTypeName);
         }
+    }
+
+    #endregion
+
+    #region SetMessageBrokerEventPublishers
+
+    /// <summary>
+    /// Sets the specific outbox publishers (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) of the registered events.
+    /// </summary>
+    /// <param name="publisherTypesByEventType">The types of the specific outbox publishers by the types of their events.</param>
+    public void SetMessageBrokerEventPublishers(Dictionary<Type, Type> publisherTypesByEventType)
+    {
+        foreach (var publisherInformation in _publishers.Values)
+            publisherInformation.MessageBrokerEventPublisherType =
+                publisherTypesByEventType.GetValueOrDefault(publisherInformation.EventType);
     }
 
     #endregion
@@ -195,7 +211,8 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 var settings = publisherInformation.Settings;
                 return new EventPublisherInformation
                 {
-                    EventType = EventTypeInformation.Create(publisherInformation.EventType),
+                    Handler = EventHandlerInformation.Create(publisherInformation.EventType,
+                        GetEventPublisherType(publisherInformation)),
                     EventTypeName = settings.EventTypeName,
                     RoutingKey = settings.RoutingKey,
                     VirtualHostKey = settings.VirtualHostKey,
@@ -204,6 +221,18 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
                 };
             })
             .ToArray();
+    }
+
+    /// <summary>
+    /// Gets the type which publishes the event: the specific outbox publisher of the event or the global one when the
+    /// outbox is used, otherwise the publisher manager which publishes the event to the RabbitMQ directly.
+    /// </summary>
+    private Type GetEventPublisherType(PublisherInformation publisherInformation)
+    {
+        if (!_defaultSettings.UseOutbox)
+            return typeof(EventPublisherManager);
+
+        return publisherInformation.MessageBrokerEventPublisherType ?? typeof(MessageBrokerEventPublisher);
     }
 
     #endregion

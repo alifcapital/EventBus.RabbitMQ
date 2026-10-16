@@ -41,7 +41,7 @@ public record EventSubscriberInformation
     public required RabbitMqVirtualHostInformation VirtualHostSettings { get; init; }
 
     /// <summary>
-    /// All handlers of the event with the information of the event classes they handle.
+    /// All handlers (subscribers) of the event with the information of the event classes they handle.
     /// </summary>
     public required IReadOnlyList<EventHandlerInformation> Handlers { get; init; }
 }

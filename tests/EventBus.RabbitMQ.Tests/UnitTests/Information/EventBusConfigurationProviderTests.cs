@@ -40,10 +40,12 @@ public class EventBusConfigurationProviderTests : BaseTestEntity
     {
         var publisherInformation = new EventPublisherInformation
         {
-            EventType = new EventTypeInformation
+            Handler = new EventHandlerInformation
             {
                 EventTypeName = nameof(SimplePublishEvent),
-                EventTypeNamespace = typeof(SimplePublishEvent).Namespace
+                EventTypeNamespace = typeof(SimplePublishEvent).Namespace,
+                HandlerTypeName = nameof(SimplePublishEventPublisher),
+                HandlerTypeNamespace = typeof(SimplePublishEventPublisher).Namespace
             },
             EventTypeName = nameof(SimplePublishEvent),
             RoutingKey = "TestRoutingKey",

@@ -55,6 +55,27 @@ public class RabbitMqExtensionsTests : BaseTestEntity
 
     #endregion
 
+    #region GetMessageBrokerEventPublisherTypes
+
+    [Test]
+    public void GetMessageBrokerEventPublisherTypes_AssemblyHasSpecificOutboxPublisher_ShouldReturnItByEventType()
+    {
+        var result = RabbitMqExtensions.GetMessageBrokerEventPublisherTypes(
+            [
+                typeof(RabbitMqExtensionsTests).Assembly,
+                typeof(EventPublisherCollector).Assembly
+            ]
+        );
+
+        var expectedPublisherTypes = new Dictionary<Type, Type>
+        {
+            { typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher) }
+        };
+        Assert.That(result, Is.EquivalentTo(expectedPublisherTypes));
+    }
+
+    #endregion
+
     #region GetSubscriberTypes
 
     [Test]

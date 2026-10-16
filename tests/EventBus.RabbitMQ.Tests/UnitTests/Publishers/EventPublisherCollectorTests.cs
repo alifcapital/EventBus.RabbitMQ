@@ -1,7 +1,9 @@
 using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Publishers.Managers;
+using EventBus.RabbitMQ.Publishers.Messaging;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using EventBus.RabbitMQ.Tests.Domain;
@@ -253,7 +255,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
     #region GetPublishersInformation
 
     [Test]
-    public void GetPublishersInformation_PublisherWithVirtualHostKey_ShouldReturnResolvedSettingsWithEventType()
+    public void GetPublishersInformation_PublisherWithVirtualHostKey_ShouldReturnResolvedSettingsWithEventClass()
     {
         var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
         {
@@ -275,8 +277,8 @@ public class EventPublisherCollectorTests : BaseTestEntity
         var publishers = _publisherCollector.GetPublishersInformation();
 
         var publisher = publishers.Single();
-        Assert.That(publisher.EventType.EventTypeName, Is.EqualTo(nameof(SimplePublishEvent)));
-        Assert.That(publisher.EventType.EventTypeNamespace, Is.EqualTo(typeof(SimplePublishEvent).Namespace));
+        Assert.That(publisher.Handler.EventTypeName, Is.EqualTo(nameof(SimplePublishEvent)));
+        Assert.That(publisher.Handler.EventTypeNamespace, Is.EqualTo(typeof(SimplePublishEvent).Namespace));
         Assert.That(publisher.EventTypeName, Is.EqualTo(nameof(SimplePublishEvent)));
         Assert.That(publisher.RoutingKey, Is.EqualTo($"TestExchangeName.{nameof(SimplePublishEvent)}"));
         Assert.That(publisher.VirtualHostKey, Is.EqualTo("TestVirtualHostKey"));
@@ -286,15 +288,49 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     [Test]
-    public void GetPublishersInformation_PublisherAddedWithGenericMethod_ShouldReturnEventType()
+    public void GetPublishersInformation_OutboxIsNotUsed_ShouldReturnPublisherManagerAsHandler()
     {
         _publisherCollector.AddPublisher<SimplePublishEvent>();
+        _publisherCollector.SetMessageBrokerEventPublishers(new Dictionary<Type, Type>
+        {
+            { typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher) }
+        });
 
         var publishers = _publisherCollector.GetPublishersInformation();
 
-        var eventType = publishers.Single().EventType;
-        Assert.That(eventType.EventTypeName, Is.EqualTo(nameof(SimplePublishEvent)));
-        Assert.That(eventType.EventTypeNamespace, Is.EqualTo(typeof(SimplePublishEvent).Namespace));
+        var expectedHandler = EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(EventPublisherManager));
+        Assert.That(publishers.Single().Handler, Is.EqualTo(expectedHandler));
+    }
+
+    [Test]
+    public void GetPublishersInformation_OutboxIsUsedAndEventHasSpecificPublisher_ShouldReturnSpecificPublisherAsHandler()
+    {
+        var publisherCollector = CreatePublisherCollectorWithOutbox();
+        publisherCollector.AddPublisher<SimplePublishEvent>();
+        publisherCollector.SetMessageBrokerEventPublishers(new Dictionary<Type, Type>
+        {
+            { typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher) }
+        });
+
+        var publishers = publisherCollector.GetPublishersInformation();
+
+        var expectedHandler =
+            EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher));
+        Assert.That(publishers.Single().Handler, Is.EqualTo(expectedHandler));
+    }
+
+    [Test]
+    public void GetPublishersInformation_OutboxIsUsedAndEventHasNoSpecificPublisher_ShouldReturnGlobalPublisherAsHandler()
+    {
+        var publisherCollector = CreatePublisherCollectorWithOutbox();
+        publisherCollector.AddPublisher<SimplePublishEvent>();
+        publisherCollector.SetMessageBrokerEventPublishers(new Dictionary<Type, Type>());
+
+        var publishers = publisherCollector.GetPublishersInformation();
+
+        var expectedHandler =
+            EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(MessageBrokerEventPublisher));
+        Assert.That(publishers.Single().Handler, Is.EqualTo(expectedHandler));
     }
 
     [Test]
@@ -356,6 +392,16 @@ public class EventPublisherCollectorTests : BaseTestEntity
         return _logger.ReceivedCalls().Any(call =>
             call.GetMethodInfo().Name == nameof(ILogger.Log) &&
             call.GetArguments()[0] is LogLevel.Error);
+    }
+
+    private EventPublisherCollector CreatePublisherCollectorWithOutbox()
+    {
+        var serviceProvider = Substitute.For<IServiceProvider>();
+        serviceProvider.GetService(typeof(RabbitMqOptions)).Returns(new RabbitMqOptions { UseOutbox = true });
+        serviceProvider.GetService(typeof(ILogger<EventPublisherCollector>)).Returns(_logger);
+        serviceProvider.GetService(typeof(IRabbitMqConnectionManager)).Returns(_rabbitMqConnectionManager);
+
+        return new EventPublisherCollector(serviceProvider);
     }
 
     private static readonly FieldInfo PublishersField = typeof(EventPublisherCollector)

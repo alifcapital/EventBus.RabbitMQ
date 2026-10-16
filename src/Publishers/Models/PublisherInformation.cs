@@ -13,4 +13,10 @@ internal record PublisherInformation
     /// The settings of the event publisher.
     /// </summary>
     public required EventPublisherOptions Settings { get; set; }
+
+    /// <summary>
+    /// The type of the specific outbox publisher (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) of the event, or null if
+    /// the event does not have it and the global publisher is used.
+    /// </summary>
+    public Type MessageBrokerEventPublisherType { get; set; }
 }

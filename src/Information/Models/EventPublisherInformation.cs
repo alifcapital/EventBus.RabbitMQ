@@ -8,9 +8,11 @@ namespace EventBus.RabbitMQ.Information.Models;
 public record EventPublisherInformation
 {
     /// <summary>
-    /// The information of the class of the publishing event.
+    /// The information of the publishing event and of its handler, which publishes it: the specific outbox publisher
+    /// (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) of the event or the global <c>MessageBrokerEventPublisher</c>
+    /// when the outbox is used, otherwise the <c>EventPublisherManager</c> which publishes it to the RabbitMQ directly.
     /// </summary>
-    public required EventTypeInformation EventType { get; init; }
+    public required EventHandlerInformation Handler { get; init; }
 
     /// <summary>
     /// The name of the event type which is attached to the published message. It may differ from the class name because
