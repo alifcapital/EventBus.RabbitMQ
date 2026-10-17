@@ -209,11 +209,11 @@ public static class RabbitMqExtensions
         Type[] publisherTypes, Dictionary<string, EventPublisherOptions> publishersOptions,
         Dictionary<Type, Type> specificPublisherTypes)
     {
+        var globalPublisherType = typeof(MessageBrokerEventPublisher);
         foreach (var typeOfPublisher in publisherTypes)
         {
             var settings = publishersOptions.GetValueOrDefault(typeOfPublisher.Name) ?? new EventPublisherOptions();
-            var publisherType = specificPublisherTypes.GetValueOrDefault(typeOfPublisher) ??
-                                typeof(MessageBrokerEventPublisher);
+            var publisherType = specificPublisherTypes.GetValueOrDefault(typeOfPublisher) ?? globalPublisherType;
             publisherCollector.AddPublisher(typeOfPublisher, settings, publisherType);
         }
     }

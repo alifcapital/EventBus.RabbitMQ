@@ -15,6 +15,11 @@ namespace EventBus.RabbitMQ.Publishers.Managers;
 
 internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEventPublisherCollector
 {
+    /// <summary>
+    /// The global publisher which is used for the events without a specific publisher.
+    /// </summary>
+    private static readonly Type GlobalPublisherType = typeof(MessageBrokerEventPublisher);
+
     private readonly RabbitMqOptions _defaultSettings = serviceProvider.GetRequiredService<RabbitMqOptions>();
 
     private readonly ILogger<EventPublisherCollector> _logger =
@@ -43,7 +48,7 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         var settings = new EventPublisherOptions();
         options?.Invoke(settings);
 
-        AddPublisher(typeOfPublisher, settings, publisherType ?? typeof(MessageBrokerEventPublisher));
+        AddPublisher(typeOfPublisher, settings, publisherType ?? GlobalPublisherType);
     }
 
     public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings, Type publisherType)
