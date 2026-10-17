@@ -89,12 +89,12 @@ public static class RabbitMqExtensions
 
         services.AddSingleton<IEventPublisherCollector>(serviceProvider =>
         {
-            var publisherManager =
-                new EventPublisherCollector(serviceProvider, GetMessageBrokerEventPublisherTypes(assemblies));
+            var publisherManager = new EventPublisherCollector(serviceProvider);
 
             var publishers = settings.Publishers ?? new Dictionary<string, EventPublisherOptions>();
             var allPublisherTypes = GetPublisherTypes(assemblies);
-            RegisterAllPublishers(publisherManager, allPublisherTypes, publishers);
+            var specificPublisherTypes = GetMessageBrokerEventPublisherTypes(assemblies);
+            RegisterAllPublishers(publisherManager, allPublisherTypes, publishers, specificPublisherTypes);
 
             var publisherManagerOptions = new EventPublisherManagerOptions(publisherManager);
             eventPublisherManagerOptions?.Invoke(publisherManagerOptions);
@@ -206,14 +206,15 @@ public static class RabbitMqExtensions
     }
 
     private static void RegisterAllPublishers(EventPublisherCollector publisherCollector,
-        Type[] publisherTypes, Dictionary<string, EventPublisherOptions> publishersOptions)
+        Type[] publisherTypes, Dictionary<string, EventPublisherOptions> publishersOptions,
+        Dictionary<Type, Type> specificPublisherTypes)
     {
         foreach (var typeOfPublisher in publisherTypes)
         {
-            if (publishersOptions.TryGetValue(typeOfPublisher.Name, out var settings))
-                publisherCollector.AddPublisher(typeOfPublisher, settings);
-            else
-                publisherCollector.AddPublisher(typeOfPublisher, new EventPublisherOptions());
+            var settings = publishersOptions.GetValueOrDefault(typeOfPublisher.Name) ?? new EventPublisherOptions();
+            var publisherType = specificPublisherTypes.GetValueOrDefault(typeOfPublisher) ??
+                                typeof(MessageBrokerEventPublisher);
+            publisherCollector.AddPublisher(typeOfPublisher, settings, publisherType);
         }
     }
 

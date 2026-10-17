@@ -14,7 +14,9 @@ internal interface IEventPublisherCollector
     /// Registers a publisher.
     /// </summary>
     /// <param name="options">The options specific to the publisher, if any.</param>
-    public void AddPublisher<TPublishEvent>(Action<EventPublisherOptions> options = null)
+    /// <param name="publisherType">The class which publishes the event: its specific outbox publisher
+    /// (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) or, if it is not passed, the global <c>MessageBrokerEventPublisher</c>.</param>
+    public void AddPublisher<TPublishEvent>(Action<EventPublisherOptions> options = null, Type publisherType = null)
         where TPublishEvent : class, IPublishEvent;
 
     /// <summary>
@@ -22,7 +24,9 @@ internal interface IEventPublisherCollector
     /// </summary>
     /// <param name="typeOfPublisher">The type of the publisher.</param>
     /// <param name="publisherSettings">The options specific to the publisher, if any.</param>
-    public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings);
+    /// <param name="publisherType">The class which publishes the event: its specific outbox publisher
+    /// (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>) or the global <c>MessageBrokerEventPublisher</c>.</param>
+    public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings, Type publisherType);
 
     /// <summary>
     /// For getting the settings of the publishing event.

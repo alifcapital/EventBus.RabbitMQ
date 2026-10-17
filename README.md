@@ -640,13 +640,7 @@ public class EventConfigurationsController(IEventBusConfigurationProvider config
     [HttpGet("publishers")]
     public IActionResult GetPublishers()
     {
-        var publishers = configurationProvider.GetPublishers()
-            .Select(p => new
-            {
-                p.EventTypeName, p.RoutingKey, p.VirtualHostSettings,
-                EventClass = $"{p.Handler.EventTypeNamespace}.{p.Handler.EventTypeName}",
-                Publisher = $"{p.Handler.HandlerTypeNamespace}.{p.Handler.HandlerTypeName}"
-            });
+        var publishers = configurationProvider.GetPublishers();
 
         return Ok(publishers);
     }
@@ -654,19 +648,12 @@ public class EventConfigurationsController(IEventBusConfigurationProvider config
     [HttpGet("subscribers")]
     public IActionResult GetSubscribers()
     {
-        var subscribers = configurationProvider.GetSubscribers()
-            .Select(s => new
-            {
-                s.EventTypeName, s.RoutingKey, s.QueueName, s.VirtualHostSettings,
-                Handlers = s.Handlers.Select(h => $"{h.HandlerTypeNamespace}.{h.HandlerTypeName}")
-            });
+        var subscribers = configurationProvider.GetSubscribers();
 
         return Ok(subscribers);
     }
 }
 ```
-
-> The models contain only plain values: the classes of an event and of its handler are described by the same `EventHandlerInformation` structure (their names and namespaces) for both publishers and subscribers, so the models can be returned from an API as they are. A publisher has one handler — the class which publishes the event: its specific outbox publisher (`IMessageBrokerEventPublisher<TEvent>`) if it exists in the given assemblies, otherwise the global `MessageBrokerEventPublisher`. A subscriber has all its handlers (`IEventSubscriber<TEvent>`).
 
 | Method | What it returns |
 |---|---|

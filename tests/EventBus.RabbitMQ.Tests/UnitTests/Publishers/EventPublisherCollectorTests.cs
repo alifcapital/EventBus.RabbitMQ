@@ -82,7 +82,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
         };
 
         // Act
-        _publisherCollector.AddPublisher(typeOfPublisher, publisherSettings);
+        _publisherCollector.AddPublisher(typeOfPublisher, publisherSettings, typeof(MessageBrokerEventPublisher));
 
         // Assert
         var publishers = GetPublishersInfo();
@@ -271,7 +271,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
             }
         };
         _publisherCollector.AddPublisher(typeof(SimplePublishEvent),
-            new EventPublisherOptions { VirtualHostKey = "TestVirtualHostKey" });
+            new EventPublisherOptions { VirtualHostKey = "TestVirtualHostKey" }, typeof(MessageBrokerEventPublisher));
         _publisherCollector.SetVirtualHostAndOwnSettingsOfPublishers(virtualHostsSettings);
 
         var publishers = _publisherCollector.GetPublishersInformation();
@@ -288,7 +288,7 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     [Test]
-    public void GetPublishersInformation_EventHasNoSpecificPublisher_ShouldReturnGlobalPublisherAsHandler()
+    public void GetPublishersInformation_EventAddedWithGenericMethodWithoutPublisher_ShouldReturnGlobalPublisherAsHandler()
     {
         _publisherCollector.AddPublisher<SimplePublishEvent>();
 
@@ -300,12 +300,11 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     [Test]
-    public void GetPublishersInformation_EventAddedWithGenericMethodHasSpecificPublisher_ShouldReturnSpecificPublisherAsHandler()
+    public void GetPublishersInformation_EventAddedWithGenericMethodWithSpecificPublisher_ShouldReturnSpecificPublisherAsHandler()
     {
-        var publisherCollector = CreatePublisherCollectorWithSpecificPublisher();
-        publisherCollector.AddPublisher<SimplePublishEvent>();
+        _publisherCollector.AddPublisher<SimplePublishEvent>(publisherType: typeof(SimplePublishEventPublisher));
 
-        var publishers = publisherCollector.GetPublishersInformation();
+        var publishers = _publisherCollector.GetPublishersInformation();
 
         var expectedHandler =
             EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher));
@@ -313,12 +312,12 @@ public class EventPublisherCollectorTests : BaseTestEntity
     }
 
     [Test]
-    public void GetPublishersInformation_EventAddedWithTypeHasSpecificPublisher_ShouldReturnSpecificPublisherAsHandler()
+    public void GetPublishersInformation_EventAddedWithTypeAndSpecificPublisher_ShouldReturnSpecificPublisherAsHandler()
     {
-        var publisherCollector = CreatePublisherCollectorWithSpecificPublisher();
-        publisherCollector.AddPublisher(typeof(SimplePublishEvent), new EventPublisherOptions());
+        _publisherCollector.AddPublisher(typeof(SimplePublishEvent), new EventPublisherOptions(),
+            typeof(SimplePublishEventPublisher));
 
-        var publishers = publisherCollector.GetPublishersInformation();
+        var publishers = _publisherCollector.GetPublishersInformation();
 
         var expectedHandler =
             EventHandlerInformation.Create(typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher));
@@ -384,16 +383,6 @@ public class EventPublisherCollectorTests : BaseTestEntity
         return _logger.ReceivedCalls().Any(call =>
             call.GetMethodInfo().Name == nameof(ILogger.Log) &&
             call.GetArguments()[0] is LogLevel.Error);
-    }
-
-    private EventPublisherCollector CreatePublisherCollectorWithSpecificPublisher()
-    {
-        var specificPublisherTypesByEventType = new Dictionary<Type, Type>
-        {
-            { typeof(SimplePublishEvent), typeof(SimplePublishEventPublisher) }
-        };
-
-        return new EventPublisherCollector(_serviceProvider, specificPublisherTypesByEventType);
     }
 
     private static readonly FieldInfo PublishersField = typeof(EventPublisherCollector)

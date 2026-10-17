@@ -13,9 +13,7 @@ using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Publishers.Managers;
 
-internal class EventPublisherCollector(
-    IServiceProvider serviceProvider,
-    IReadOnlyDictionary<Type, Type> specificPublisherTypesByEventType = null) : IEventPublisherCollector
+internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEventPublisherCollector
 {
     private readonly RabbitMqOptions _defaultSettings = serviceProvider.GetRequiredService<RabbitMqOptions>();
 
@@ -32,46 +30,30 @@ internal class EventPublisherCollector(
 
     #region AddPublisher
 
-    public void AddPublisher<TPublisher>(Action<EventPublisherOptions> options = null)
+    public void AddPublisher<TPublisher>(Action<EventPublisherOptions> options = null, Type publisherType = null)
         where TPublisher : class, IPublishEvent
     {
-        var publisherName = typeof(TPublisher).Name;
-        if (_publishers.TryGetValue(publisherName, out var publisherInformation))
+        var typeOfPublisher = typeof(TPublisher);
+        if (_publishers.TryGetValue(typeOfPublisher.Name, out var publisherInformation))
         {
             options?.Invoke(publisherInformation.Settings);
+            return;
         }
-        else
-        {
-            var settings = new EventPublisherOptions();
-            options?.Invoke(settings);
 
-            _publishers.Add(publisherName, new PublisherInformation
-            {
-                EventType = typeof(TPublisher),
-                PublisherType = GetPublisherType(typeof(TPublisher)),
-                Settings = settings
-            });
-        }
+        var settings = new EventPublisherOptions();
+        options?.Invoke(settings);
+
+        AddPublisher(typeOfPublisher, settings, publisherType ?? typeof(MessageBrokerEventPublisher));
     }
 
-    public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings)
+    public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings, Type publisherType)
     {
         _publishers[typeOfPublisher.Name] = new PublisherInformation
         {
             EventType = typeOfPublisher,
-            PublisherType = GetPublisherType(typeOfPublisher),
+            PublisherType = publisherType,
             Settings = publisherSettings
         };
-    }
-
-    /// <summary>
-    /// Gets the publisher of the event: its specific outbox publisher if it exists, otherwise the global one.
-    /// </summary>
-    /// <param name="eventType">The type of the publishing event.</param>
-    /// <returns>The type of the publisher of the event.</returns>
-    private Type GetPublisherType(Type eventType)
-    {
-        return specificPublisherTypesByEventType?.GetValueOrDefault(eventType) ?? typeof(MessageBrokerEventPublisher);
     }
 
     #endregion
