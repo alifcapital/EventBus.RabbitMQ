@@ -1,3 +1,4 @@
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Subscribers.Models;
 using EventBus.RabbitMQ.Subscribers.Options;
 
@@ -33,4 +34,10 @@ internal interface IEventSubscriberCollector
     /// For printing all loaded subscribers information to the logger for investigation purposes.
     /// </summary>
     internal void PrintLoadedSubscribersInformation();
+
+    /// <summary>
+    /// Gets the resolved settings of all registered subscribers including the information of their handlers,
+    /// without the connection secrets.
+    /// </summary>
+    internal IReadOnlyCollection<EventSubscriberInformation> GetSubscribersInformation();
 }

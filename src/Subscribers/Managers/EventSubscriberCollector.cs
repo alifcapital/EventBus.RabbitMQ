@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using EventBus.RabbitMQ.Configurations;
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Instrumentation.Trace;
 using EventBus.RabbitMQ.Subscribers.Consumers;
 using EventBus.RabbitMQ.Subscribers.Models;
@@ -233,6 +234,33 @@ internal class EventSubscriberCollector(
             if (subscriberHandlersCount == 0)
                 _logger.LogWarning("No subscriber handlers are loaded for the event '{EventName}'", eventName);
         }
+    }
+
+    #endregion
+
+    #region GetSubscribersInformation
+
+    public IReadOnlyCollection<EventSubscriberInformation> GetSubscribersInformation()
+    {
+        return Subscribers.Values
+            .Select(subscribersInformation =>
+            {
+                var settings = subscribersInformation.Settings;
+                return new EventSubscriberInformation
+                {
+                    EventTypeName = settings.EventTypeName,
+                    RoutingKey = settings.RoutingKey,
+                    QueueName = settings.QueueName,
+                    VirtualHostKey = settings.VirtualHostKey,
+                    PropertyNamingPolicy = settings.PropertyNamingPolicy,
+                    VirtualHostSettings = RabbitMqVirtualHostInformation.Create(settings.VirtualHostSettings),
+                    Handlers = subscribersInformation.Subscribers
+                        .Select(subscriber =>
+                            EventHandlerInformation.Create(subscriber.EventType, subscriber.EventSubscriberType))
+                        .ToArray()
+                };
+            })
+            .ToArray();
     }
 
     #endregion

@@ -1,5 +1,6 @@
 using System.Reflection;
 using EventBus.RabbitMQ.Configurations;
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Subscribers.Consumers;
 using EventBus.RabbitMQ.Subscribers.Managers;
 using EventBus.RabbitMQ.Subscribers.Models;
@@ -308,6 +309,46 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         Assert.That(logger.ReceivedCalls().Any(call =>
             call.GetMethodInfo().Name == nameof(ILogger.Log) &&
             call.GetArguments()[0] is LogLevel.Warning), Is.True);
+    }
+
+    #endregion
+
+    #region GetSubscribersInformation
+
+    [Test]
+    public void GetSubscribersInformation_EventsWithSameNameFromDifferentModules_ShouldReturnOneSubscriberWithBothHandlers()
+    {
+        var virtualHostsSettings = new Dictionary<string, RabbitMqHostSettings>
+        {
+            {
+                "TestVirtualHostKey", new RabbitMqHostSettings
+                {
+                    VirtualHost = "TestVirtualHost",
+                    ExchangeName = "TestExchangeName",
+                    QueueName = "TestQueueName"
+                }
+            }
+        };
+        var options = new Action<EventSubscriberOptions>(x => { x.VirtualHostKey = "TestVirtualHostKey"; });
+        _subscriberCollector.AddSubscriber<Domain.Module1.UserCreated, Domain.Module1.UserCreatedSubscriber>(options);
+        _subscriberCollector.AddSubscriber<Domain.Module2.UserCreated, Domain.Module2.UserCreatedSubscriber>(options);
+        _subscriberCollector.SetVirtualHostAndOwnSettingsOfSubscribers(virtualHostsSettings);
+
+        var subscribers = _subscriberCollector.GetSubscribersInformation();
+
+        var subscriber = subscribers.Single(s =>
+            s.Handlers.Any(h => h.HandlerTypeNamespace == typeof(Domain.Module1.UserCreatedSubscriber).Namespace));
+        var expectedHandlers = new[]
+        {
+            EventHandlerInformation.Create(typeof(Domain.Module1.UserCreated), typeof(Domain.Module1.UserCreatedSubscriber)),
+            EventHandlerInformation.Create(typeof(Domain.Module2.UserCreated), typeof(Domain.Module2.UserCreatedSubscriber))
+        };
+        Assert.That(subscriber.Handlers, Is.EquivalentTo(expectedHandlers));
+        Assert.That(subscriber.VirtualHostKey, Is.EqualTo("TestVirtualHostKey"));
+        Assert.That(subscriber.QueueName, Is.EqualTo("TestQueueName"));
+        Assert.That(subscriber.RoutingKey, Is.EqualTo($"TestExchangeName.{subscriber.EventTypeName}"));
+        Assert.That(subscriber.VirtualHostSettings.VirtualHost, Is.EqualTo("TestVirtualHost"));
+        Assert.That(subscriber.VirtualHostSettings.ExchangeName, Is.EqualTo("TestExchangeName"));
     }
 
     #endregion

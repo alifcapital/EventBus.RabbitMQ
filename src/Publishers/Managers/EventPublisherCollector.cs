@@ -2,7 +2,9 @@ using System.Diagnostics;
 using EventBus.RabbitMQ.Configurations;
 using EventBus.RabbitMQ.Connections;
 using EventBus.RabbitMQ.Exceptions;
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Instrumentation.Trace;
+using EventBus.RabbitMQ.Publishers.Messaging;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,38 +15,50 @@ namespace EventBus.RabbitMQ.Publishers.Managers;
 
 internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEventPublisherCollector
 {
+    /// <summary>
+    /// The global publisher which is used for the events without a specific publisher.
+    /// </summary>
+    private static readonly Type GlobalPublisherType = typeof(MessageBrokerEventPublisher);
+
     private readonly RabbitMqOptions _defaultSettings = serviceProvider.GetRequiredService<RabbitMqOptions>();
 
     private readonly ILogger<EventPublisherCollector> _logger =
         serviceProvider.GetRequiredService<ILogger<EventPublisherCollector>>();
 
-    private readonly Dictionary<string, EventPublisherOptions> _publishersConnectionInfo = new();
+    /// <summary>
+    /// The registered publishing events with their settings by their class names.
+    /// </summary>
+    private readonly Dictionary<string, PublisherInformation> _publishers = new();
 
     private readonly IRabbitMqConnectionManager _rabbitMqConnectionManager =
         serviceProvider.GetRequiredService<IRabbitMqConnectionManager>();
 
     #region AddPublisher
 
-    public void AddPublisher<TPublisher>(Action<EventPublisherOptions> options = null)
+    public void AddPublisher<TPublisher>(Action<EventPublisherOptions> options = null, Type publisherType = null)
         where TPublisher : class, IPublishEvent
     {
-        var publisherName = typeof(TPublisher).Name;
-        if (_publishersConnectionInfo.TryGetValue(publisherName, out var settings))
+        var typeOfPublisher = typeof(TPublisher);
+        if (_publishers.TryGetValue(typeOfPublisher.Name, out var publisherInformation))
         {
-            options?.Invoke(settings);
+            options?.Invoke(publisherInformation.Settings);
+            return;
         }
-        else
-        {
-            settings = new EventPublisherOptions();
-            options?.Invoke(settings);
 
-            _publishersConnectionInfo.Add(publisherName, settings);
-        }
+        var settings = new EventPublisherOptions();
+        options?.Invoke(settings);
+
+        AddPublisher(typeOfPublisher, settings, publisherType ?? GlobalPublisherType);
     }
 
-    public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings)
+    public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings, Type publisherType)
     {
-        _publishersConnectionInfo[typeOfPublisher.Name] = publisherSettings;
+        _publishers[typeOfPublisher.Name] = new PublisherInformation
+        {
+            EventType = typeOfPublisher,
+            PublisherType = publisherType,
+            Settings = publisherSettings
+        };
     }
 
     #endregion
@@ -56,8 +70,9 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     /// </summary>
     public void SetVirtualHostAndOwnSettingsOfPublishers(Dictionary<string, RabbitMqHostSettings> virtualHostsSettings)
     {
-        foreach (var (eventTypeName, eventSettings) in _publishersConnectionInfo)
+        foreach (var (eventTypeName, publisherInformation) in _publishers)
         {
+            var eventSettings = publisherInformation.Settings;
             var virtualHostSettings = string.IsNullOrEmpty(eventSettings.VirtualHostKey)
                 ? _defaultSettings
                 : virtualHostsSettings.GetValueOrDefault(eventSettings.VirtualHostKey, _defaultSettings);
@@ -75,8 +90,9 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     public async Task CreateExchangeForPublishersAsync(CancellationToken cancellationToken)
     {
         var createdExchangeNames = new HashSet<string>();
-        foreach (var (eventName, eventSettings) in _publishersConnectionInfo)
+        foreach (var (eventName, publisherInformation) in _publishers)
         {
+            var eventSettings = publisherInformation.Settings;
             try
             {
                 var virtualHostSettings = eventSettings.VirtualHostSettings;
@@ -115,8 +131,8 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         where TPublishEvent : class, IPublishEvent
     {
         var eventType = publishEvent.GetType().Name;
-        if (_publishersConnectionInfo.TryGetValue(eventType, out var settings))
-            return settings;
+        if (_publishers.TryGetValue(eventType, out var publisherInformation))
+            return publisherInformation.Settings;
 
         throw new EventBusException(
             $"The {eventType} publishing event does not exist in the registered publishers list.");
@@ -150,13 +166,14 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
     
     public void PrintLoadedPublishersInformation()
     {
-        var loadedPublishersCount = _publishersConnectionInfo.Count;
+        var loadedPublishersCount = _publishers.Count;
         using var activity = EventBusTraceInstrumentation.StartActivity(
             $"MQ: Total {loadedPublishersCount} publishers are loaded.", ActivityKind.Server);
         _logger.LogInformation("Total {loadedPublishersCount} publishers are loaded.", loadedPublishersCount);
         
-        foreach (var (eventName, eventSettings) in _publishersConnectionInfo)
+        foreach (var (eventName, publisherInformation) in _publishers)
         {
+            var eventSettings = publisherInformation.Settings;
             _logger.LogDebug(
                 "Loaded publisher: EventName='{EventName}', VirtualHost='{VirtualHost}', ExchangeName='{ExchangeName}', ExchangeType='{ExchangeType}', RoutingKey='{RoutingKey}', PropertyNamingPolicy='{PropertyNamingPolicy}'",
                 eventName,
@@ -168,5 +185,29 @@ internal class EventPublisherCollector(IServiceProvider serviceProvider) : IEven
         }
     }
     
+    #endregion
+
+    #region GetPublishersInformation
+
+    public IReadOnlyCollection<EventPublisherInformation> GetPublishersInformation()
+    {
+        return _publishers.Values
+            .Select(publisherInformation =>
+            {
+                var settings = publisherInformation.Settings;
+                return new EventPublisherInformation
+                {
+                    EventTypeName = settings.EventTypeName,
+                    RoutingKey = settings.RoutingKey,
+                    VirtualHostKey = settings.VirtualHostKey,
+                    PropertyNamingPolicy = settings.PropertyNamingPolicy,
+                    VirtualHostSettings = RabbitMqVirtualHostInformation.Create(settings.VirtualHostSettings),
+                    Handler = EventHandlerInformation.Create(publisherInformation.EventType,
+                        publisherInformation.PublisherType)
+                };
+            })
+            .ToArray();
+    }
+
     #endregion
 }

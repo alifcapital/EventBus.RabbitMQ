@@ -1,3 +1,4 @@
+using EventBus.RabbitMQ.Information.Models;
 using EventBus.RabbitMQ.Publishers.Models;
 using EventBus.RabbitMQ.Publishers.Options;
 using RabbitMQ.Client;
@@ -13,7 +14,9 @@ internal interface IEventPublisherCollector
     /// Registers a publisher.
     /// </summary>
     /// <param name="options">The options specific to the publisher, if any.</param>
-    public void AddPublisher<TPublishEvent>(Action<EventPublisherOptions> options = null)
+    /// <param name="publisherType">The class of specific event publisher (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>).
+    ///  If it is not passed, the global <c>MessageBrokerEventPublisher</c> will be used.</param>
+    public void AddPublisher<TPublishEvent>(Action<EventPublisherOptions> options = null, Type publisherType = null)
         where TPublishEvent : class, IPublishEvent;
 
     /// <summary>
@@ -21,7 +24,9 @@ internal interface IEventPublisherCollector
     /// </summary>
     /// <param name="typeOfPublisher">The type of the publisher.</param>
     /// <param name="publisherSettings">The options specific to the publisher, if any.</param>
-    public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings);
+    /// <param name="publisherType">The class of specific event publisher (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>).
+    ///  If it is not passed, the global <c>MessageBrokerEventPublisher</c> will be used.</param>
+    public void AddPublisher(Type typeOfPublisher, EventPublisherOptions publisherSettings, Type publisherType);
 
     /// <summary>
     /// For getting the settings of the publishing event.
@@ -45,4 +50,10 @@ internal interface IEventPublisherCollector
     /// For printing all loaded publishers information to the logger for investigation purposes.
     /// </summary>
     internal void PrintLoadedPublishersInformation();
+
+    /// <summary>
+    /// Gets the resolved settings of all registered publishers including the information of their event classes,
+    /// without the connection secrets.
+    /// </summary>
+    internal IReadOnlyCollection<EventPublisherInformation> GetPublishersInformation();
 }

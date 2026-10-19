@@ -630,6 +630,42 @@ Every event has a `status` column (`Pending` · `Failed` · `Processed` · `Reje
 
 A working example is in the `UsersService` test service: [BaseEventsController](tests/Services/UsersService/Controllers/BaseEventsController.cs) with the `api/inbox-events` and `api/outbox-events` routes. For all details (filters, paging, statuses, table schema and its migration), see the [Managing events](https://github.com/alifcapital/EventStorage?tab=readme-ov-file#managing-events-for-an-admin-ui) section of the EventStorage documentation.
 
+### Viewing the loaded configuration of publishers and subscribers
+
+The settings of an event are assembled from several places: the `DefaultSettings`, the `VirtualHostSettings` of its `VirtualHostKey`, its own entry in the `Publishers`/`Subscribers` sections and the values calculated by the library (the event type name based on the `EventNamingPolicy`, the routing key and the queue name). To see the final result, for example from an admin page, inject the `IEventBusConfigurationProvider` singleton service:
+
+```csharp
+public class EventConfigurationsController(IEventBusConfigurationProvider configurationProvider) : ControllerBase
+{
+    [HttpGet("publishers")]
+    public IActionResult GetPublishers()
+    {
+        var publishers = configurationProvider.GetPublishers();
+
+        return Ok(publishers);
+    }
+
+    [HttpGet("subscribers")]
+    public IActionResult GetSubscribers()
+    {
+        var subscribers = configurationProvider.GetSubscribers();
+
+        return Ok(subscribers);
+    }
+}
+```
+
+| Method | What it returns |
+|---|---|
+| `GetPublishers()` | An `EventPublisherInformation` for each publishing event: its event type name, routing key, virtual host key, property naming policy, the settings of its virtual host and its handler (the names and namespaces of the event class and of the class which publishes it). |
+| `GetSubscribers()` | An `EventSubscriberInformation` for each subscribed event name: its event type name, routing key, queue name, virtual host key, property naming policy, the settings of its virtual host and all its handlers (the names and namespaces of the handler and of the event class it handles). The subscribers are grouped by the event type name, so the handlers may handle event classes of different assemblies (for example, of different modules). |
+
+The settings of the virtual host (`RabbitMqVirtualHostInformation`) contain only the virtual host, exchange name and type, event naming policy, publisher confirmation, TLS flag and the queue/exchange arguments. The host name, port, user name, password and paths of the client certificate are not returned, so the result is safe to show to a user.
+
+The service is registered even if the RabbitMQ is disabled (`IsEnabled: false`); in that case both methods return an empty collection.
+
+> ⚠️ The library does not add any endpoints or authorization. Protect your endpoint with your own permissions.
+
 ### What happens to the received events while the application is stopping?
 When the application is stopping, the library stops receiving events before the services of the application are disposed. The consumers are cancelled, so RabbitMQ does not send new events, and the library waits for the events being handled (up to the shutdown timeout of the host). The events which were received but not acknowledged yet are redelivered by RabbitMQ after the restart, so no event is lost. The errors caused by stopping the application (for example, `ObjectDisposedException` of the disposed services) are not logged as errors. If the Inbox is enabled, the received event is stored with the stopping token of the application, and the event is acknowledged only after it is stored.
 

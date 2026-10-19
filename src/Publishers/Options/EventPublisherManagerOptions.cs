@@ -16,9 +16,12 @@ public class EventPublisherManagerOptions
     /// Registers a publisher.
     /// </summary>
     /// <param name="eventPublisherOptions">The eventPublisherOptions specific to the publisher, if any.</param>
-    public void AddPublisher<TPublisher>(Action<EventPublisherOptions> eventPublisherOptions = null)
+    /// <param name="publisherType">The class of specific event publisher (<c>IMessageBrokerEventPublisher&lt;TEvent&gt;</c>).
+    ///  If it is not passed, the global <c>MessageBrokerEventPublisher</c> will be used.</param>
+    public void AddPublisher<TPublisher>(Action<EventPublisherOptions> eventPublisherOptions = null,
+        Type publisherType = null)
         where TPublisher : class, IPublishEvent
     {
-        _publisherCollector.AddPublisher<TPublisher>(eventPublisherOptions);
+        _publisherCollector.AddPublisher<TPublisher>(eventPublisherOptions, publisherType);
     }
 }
