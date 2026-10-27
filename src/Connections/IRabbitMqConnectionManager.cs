@@ -5,7 +5,7 @@ namespace EventBus.RabbitMQ.Connections;
 /// <summary>
 /// Creates and manages RabbitMQ connections
 /// </summary>
-internal interface IRabbitMqConnectionManager
+public interface IRabbitMqConnectionManager
 {
     /// <summary>
     /// Gets or creates a RabbitMQ connection based on the provided event settings.

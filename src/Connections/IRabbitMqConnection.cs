@@ -3,7 +3,7 @@ using RabbitMQ.Client;
 
 namespace EventBus.RabbitMQ.Connections;
 
-internal interface IRabbitMqConnection : IDisposable
+public interface IRabbitMqConnection : IDisposable
 {
     /// <summary>
     /// Returns true, when RabbitMQ connected
