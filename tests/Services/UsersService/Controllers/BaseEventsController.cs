@@ -1,5 +1,6 @@
 using EventStorage.Management;
 using EventStorage.Management.Models;
+using InMemoryMessaging.Management.Models;
 using Microsoft.AspNetCore.Mvc;
 using UsersService.Models;
 
@@ -66,9 +67,9 @@ public abstract class BaseEventsController(IEventsManagementService eventsServic
 
     private IActionResult ToResponse(EventActionResult result) => result.Status switch
     {
-        EventActionResultStatus.Success => Ok(),
-        EventActionResultStatus.NotFound => NotFound(result.FailureReason),
-        EventActionResultStatus.AlreadyProcessing or EventActionResultStatus.InvalidState =>
+        MessageActionResultStatus.Success => Ok(),
+        MessageActionResultStatus.NotFound => NotFound(result.FailureReason),
+        MessageActionResultStatus.AlreadyProcessing or MessageActionResultStatus.InvalidState =>
             Conflict(result.FailureReason),
         _ => UnprocessableEntity(result.FailureReason)
     };
