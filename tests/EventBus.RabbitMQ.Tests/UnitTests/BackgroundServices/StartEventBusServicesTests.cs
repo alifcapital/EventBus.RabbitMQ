@@ -73,12 +73,12 @@ public class StartEventBusServicesTests : BaseTestEntity
     }
 
     [Test]
-    public void StopAsync_WhenStoppingConsumersFails_ShouldNotThrow()
+    public async Task StopAsync_WhenStoppingConsumersFails_ShouldNotThrow()
     {
         _subscriberCollector.StopReceivingEventsAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("Channel is broken")));
 
-        Assert.DoesNotThrowAsync(() => _service.StopAsync(CancellationToken.None));
+        await Assert.DoesNotThrowAsync(() => _service.StopAsync(CancellationToken.None));
         Assert.That(HasLog(LogLevel.Warning), Is.True);
     }
 
