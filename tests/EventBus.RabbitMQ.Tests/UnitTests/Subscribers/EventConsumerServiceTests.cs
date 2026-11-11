@@ -169,9 +169,9 @@ public class EventConsumerServiceTests : BaseTestEntity
     }
 
     [Test]
-    public void StopReceivingEventsAsync_BeforeStartingConsumer_ShouldNotThrow()
+    public async Task StopReceivingEventsAsync_BeforeStartingConsumer_ShouldNotThrow()
     {
-        Assert.DoesNotThrowAsync(() => _consumerService.StopReceivingEventsAsync(CancellationToken.None));
+        await Assert.DoesNotThrowAsync(() => _consumerService.StopReceivingEventsAsync(CancellationToken.None));
     }
 
     [Test]
@@ -211,7 +211,7 @@ public class EventConsumerServiceTests : BaseTestEntity
             .Returns(Task.FromException(new InvalidOperationException("Channel is broken")));
         await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
 
-        Assert.DoesNotThrowAsync(() => _consumerService.StopReceivingEventsAsync(CancellationToken.None));
+        await Assert.DoesNotThrowAsync(() => _consumerService.StopReceivingEventsAsync(CancellationToken.None));
     }
 
     [Test]

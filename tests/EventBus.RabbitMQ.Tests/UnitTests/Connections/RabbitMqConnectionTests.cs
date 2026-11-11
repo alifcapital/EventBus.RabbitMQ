@@ -45,7 +45,7 @@ public class RabbitMqConnectionTests : BaseTestEntity
     [Test]
     public async Task ConnectAsync_WhenCannotOpenConnection_ShouldThrowEventBusException()
     {
-        var exception = Assert.ThrowsAsync<EventBusException>(async () => await _connection.ConnectAsync(CancellationToken.None));
+        var exception = await Assert.ThrowsAsync<EventBusException>(async () => await _connection.ConnectAsync(CancellationToken.None));
 
         var expectedMessage =
             $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.";
@@ -58,7 +58,7 @@ public class RabbitMqConnectionTests : BaseTestEntity
     }
 
     [Test]
-    public void ConnectAsync_WhenVirtualHostIsInvalid_ShouldThrowEventBusExceptionWithoutSuccessLog()
+    public async Task ConnectAsync_WhenVirtualHostIsInvalid_ShouldThrowEventBusExceptionWithoutSuccessLog()
     {
         var connectionFactory = Substitute.For<IConnectionFactory>();
         var invalidVhostConnection = CreateOpenedConnection(_ =>
@@ -71,7 +71,7 @@ public class RabbitMqConnectionTests : BaseTestEntity
             .Returns(Task.FromResult(invalidVhostConnection));
         SetPrivateField("_connectionFactory", connectionFactory);
 
-        var exception = Assert.ThrowsAsync<EventBusException>(async () => await _connection.ConnectAsync(CancellationToken.None));
+        var exception = await Assert.ThrowsAsync<EventBusException>(async () => await _connection.ConnectAsync(CancellationToken.None));
 
         using (Assert.EnterMultipleScope())
         {

@@ -285,7 +285,7 @@ public class EventSubscriberCollectorTests : BaseTestEntity
         eventConsumers.Add("failing", failingConsumer);
         eventConsumers.Add("working", consumer);
 
-        Assert.DoesNotThrowAsync(() => _subscriberCollector.StopReceivingEventsAsync(CancellationToken.None));
+        await Assert.DoesNotThrowAsync(() => _subscriberCollector.StopReceivingEventsAsync(CancellationToken.None));
 
         await consumer.Received(1).StopReceivingEventsAsync(Arg.Any<CancellationToken>());
     }

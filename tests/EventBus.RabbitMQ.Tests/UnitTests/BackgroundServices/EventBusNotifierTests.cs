@@ -43,7 +43,7 @@ public class EventBusNotifierTests : BaseTestEntity
     }
 
     [Test]
-    public void ExecuteAsync_UseInboxIsTrueButInboxItselfDisabled_ShouldThrowException()
+    public async Task ExecuteAsync_UseInboxIsTrueButInboxItselfDisabled_ShouldThrowException()
     {
         var rabbitMqOptions = new RabbitMqOptions { IsEnabled = true, UseInbox = true, UseOutbox = false };
         var eventStorageOptions = new InboxAndOutboxSettings
@@ -52,12 +52,12 @@ public class EventBusNotifierTests : BaseTestEntity
         };
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
-        var ex = Assert.ThrowsAsync<EventBusException>(async () => await InvokeExecuteAsync(notifier));
+        var ex = await Assert.ThrowsAsync<EventBusException>(async () => await InvokeExecuteAsync(notifier));
         Assert.That(ex!.Message.StartsWith("Using an Inbox functionality is enabled"), Is.True);
     }
 
     [Test]
-    public void ExecuteAsync_UseOutboxIsTrueButOutboxItselfDisabled_ShouldThrowException()
+    public async Task ExecuteAsync_UseOutboxIsTrueButOutboxItselfDisabled_ShouldThrowException()
     {
         var rabbitMqOptions = new RabbitMqOptions { IsEnabled = true, UseInbox = false, UseOutbox = true };
         var eventStorageOptions = new InboxAndOutboxSettings
@@ -66,12 +66,12 @@ public class EventBusNotifierTests : BaseTestEntity
         };
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
-        var ex = Assert.ThrowsAsync<EventBusException>(async () => await InvokeExecuteAsync(notifier));
+        var ex = await Assert.ThrowsAsync<EventBusException>(async () => await InvokeExecuteAsync(notifier));
         Assert.That(ex!.Message.StartsWith("Using an Outbox functionality is enabled"), Is.True);
     }
 
     [Test]
-    public void ExecuteAsync_AllInboxAndOutboxParametersAreDisabled_ShouldNotThrow()
+    public async Task ExecuteAsync_AllInboxAndOutboxParametersAreDisabled_ShouldNotThrow()
     {
         var rabbitMqOptions = new RabbitMqOptions { IsEnabled = true, UseInbox = false, UseOutbox = false };
         var eventStorageOptions = new InboxAndOutboxSettings
@@ -81,7 +81,7 @@ public class EventBusNotifierTests : BaseTestEntity
         };
         var notifier = new EventBusNotifier(rabbitMqOptions, eventStorageOptions, _logger);
 
-        Assert.DoesNotThrowAsync(async () => await InvokeExecuteAsync(notifier));
+        await Assert.DoesNotThrowAsync(async () => await InvokeExecuteAsync(notifier));
     }
 
     #endregion

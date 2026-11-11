@@ -100,7 +100,7 @@ public class EventPublisherManagerTests : BaseTestEntity
     }
 
     [Test]
-    public void PublishAsync_WhenBrokerDoesNotAcknowledgeThePublishedEvent_ShouldThrowThePublishException()
+    public async Task PublishAsync_WhenBrokerDoesNotAcknowledgeThePublishedEvent_ShouldThrowThePublishException()
     {
         var cancellationToken = CancellationToken.None;
         var publishEvent = new SimplePublishEvent();
@@ -110,14 +110,14 @@ public class EventPublisherManagerTests : BaseTestEntity
                 Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromException(publishException));
 
-        var exception = Assert.ThrowsAsync<PublishException>(async () =>
+        var exception = await Assert.ThrowsAsync<PublishException>(async () =>
             await _publisherManager.PublishAsync(publishEvent, cancellationToken));
 
         Assert.That(exception, Is.SameAs(publishException));
     }
 
     [Test]
-    public void PublishAsync_WhenBrokerDoesNotAcknowledgeThePublishedEvent_ShouldDisposeTheCreatedChannel()
+    public async Task PublishAsync_WhenBrokerDoesNotAcknowledgeThePublishedEvent_ShouldDisposeTheCreatedChannel()
     {
         var cancellationToken = CancellationToken.None;
         var publishEvent = new SimplePublishEvent();
@@ -126,14 +126,14 @@ public class EventPublisherManagerTests : BaseTestEntity
                 Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromException(new PublishException(publishSequenceNumber: 1, isReturn: false)));
 
-        Assert.ThrowsAsync<PublishException>(async () =>
+        await Assert.ThrowsAsync<PublishException>(async () =>
             await _publisherManager.PublishAsync(publishEvent, cancellationToken));
 
         _ = channel.Received(1).DisposeAsync();
     }
 
     [Test]
-    public void PublishAsync_WhenTheChannelCannotBeCreated_ShouldThrowTheException()
+    public async Task PublishAsync_WhenTheChannelCannotBeCreated_ShouldThrowTheException()
     {
         var cancellationToken = CancellationToken.None;
         var publishEvent = new SimplePublishEvent();
@@ -142,12 +142,12 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherCollector.CreateRabbitMqChannelAsync(eventSettings, cancellationToken)
             .Returns(Task.FromException<IChannel>(new EventBusException("Connection is not opened.")));
 
-        Assert.ThrowsAsync<EventBusException>(async () =>
+        await Assert.ThrowsAsync<EventBusException>(async () =>
             await _publisherManager.PublishAsync(publishEvent, cancellationToken));
     }
 
     [Test]
-    public void PublishAsync_WhenPublishingFailsWhileApplicationIsStopping_ShouldThrowWithoutLoggingError()
+    public async Task PublishAsync_WhenPublishingFailsWhileApplicationIsStopping_ShouldThrowWithoutLoggingError()
     {
         var applicationLifetime = Substitute.For<IHostApplicationLifetime>();
         applicationLifetime.ApplicationStopping.Returns(new CancellationToken(canceled: true));
@@ -156,13 +156,13 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherCollector.GetPublisherSettings(publishEvent)
             .Returns(_ => throw new ObjectDisposedException(nameof(IServiceProvider)));
 
-        Assert.ThrowsAsync<ObjectDisposedException>(() =>
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             publisherManager.PublishAsync(publishEvent, CancellationToken.None));
         Assert.That(HasErrorLog(), Is.False);
     }
 
     [Test]
-    public void PublishAsync_WhenPublishingFailsWithoutStoppingApplication_ShouldThrowAndLogError()
+    public async Task PublishAsync_WhenPublishingFailsWithoutStoppingApplication_ShouldThrowAndLogError()
     {
         var applicationLifetime = Substitute.For<IHostApplicationLifetime>();
         applicationLifetime.ApplicationStopping.Returns(CancellationToken.None);
@@ -171,13 +171,13 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherCollector.GetPublisherSettings(publishEvent)
             .Returns(_ => throw new ObjectDisposedException(nameof(IServiceProvider)));
 
-        Assert.ThrowsAsync<ObjectDisposedException>(() =>
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             publisherManager.PublishAsync(publishEvent, CancellationToken.None));
         Assert.That(HasErrorLog(), Is.True);
     }
 
     [Test]
-    public void PublishAsync_WhenPublishingIsCancelled_ShouldThrowWithoutLoggingError()
+    public async Task PublishAsync_WhenPublishingIsCancelled_ShouldThrowWithoutLoggingError()
     {
         var publishEvent = new SimplePublishEvent();
         var eventSettings = CreateEventSettings(publishEvent);
@@ -185,7 +185,7 @@ public class EventPublisherManagerTests : BaseTestEntity
         _publisherCollector.CreateRabbitMqChannelAsync(eventSettings, Arg.Any<CancellationToken>())
             .Returns(Task.FromException<IChannel>(new OperationCanceledException()));
 
-        Assert.ThrowsAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
             _publisherManager.PublishAsync(publishEvent, CancellationToken.None));
         Assert.That(HasErrorLog(), Is.False);
     }

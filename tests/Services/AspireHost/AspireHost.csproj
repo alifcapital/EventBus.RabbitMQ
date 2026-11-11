@@ -9,9 +9,5 @@
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
         <AspireUseCliBundle>true</AspireUseCliBundle>
     </PropertyGroup>
-    
-    <ItemGroup>
-        <PackageReference Include="MessagePack" Version="3.1.10" />
-    </ItemGroup>
 
 </Project>
