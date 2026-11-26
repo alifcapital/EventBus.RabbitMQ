@@ -16,8 +16,8 @@ internal class RabbitMqConnection : IRabbitMqConnection
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
     
     /// <summary>
-    /// A <see cref="Guid"/> cannot be read and written atomically, so <see cref="_connectionId"/> is read and written
-    /// under this lock: a reader on another thread always sees a whole id.
+    /// Guards <see cref="_connectionId"/>: a <see cref="Guid"/> is not read and written in one step (atomically),
+    /// so without the lock another thread could see half of the old ID and half of the new one.
     /// </summary>
     private readonly Lock _connectionIdLock = new();
     
@@ -34,7 +34,8 @@ internal class RabbitMqConnection : IRabbitMqConnection
     public event EventHandler Reconnected;
 
     /// <summary>
-    /// Whether the background loop retrying to reconnect is running, to not start more than one at a time.
+    /// 1 while <see cref="RetryReconnectAsync"/> is running, otherwise 0, so only one retry loop is started.
+    /// An <see cref="int"/> instead of a <see cref="bool"/>, to be used with <see cref="Interlocked"/>.
     /// </summary>
     private int _isRetryingToReconnect;
 
@@ -90,7 +91,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
                     );
 
                 var applicationName = AppDomain.CurrentDomain.FriendlyName;
-                // The id is a part of the name, to find the connection in the management UI of RabbitMQ by the logs.
+                // The id lets you find this connection in the management UI by the id in the logs.
                 var connectionDisplayName =
                     $"For the {_connectionOptions.VirtualHost} from the {applicationName} service ({newConnectionId})";
 
@@ -119,14 +120,12 @@ internal class RabbitMqConnection : IRabbitMqConnection
                     $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
             }
 
-            // The old (lost) connection is disposed only after the new one is opened. It must not be disposed while
-            // the RabbitMQ client is still raising its shutdown event, otherwise its channels are never notified
-            // about the shutdown (the client throws ObjectDisposedException while notifying them and swallows it).
+            // Dispose the old connection only now, after the new one is opened (see OnConnectionShutdownAsync).
             var oldConnection = _connection;
             _connection = newConnection;
             lock (_connectionIdLock)
             {
-                // A connection was opened before, so the new one replaces a lost (or closed) connection.
+                // Not the first connection, so it replaces a lost one.
                 isReconnected = _connectionId != Guid.Empty;
                 _connectionId = newConnectionId;
             }
@@ -148,7 +147,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
     }
 
     /// <summary>
-    /// Notifies the subscribers (consumers) that a new connection is opened to replace the lost one.
+    /// Raises <see cref="Reconnected"/>; errors of the handlers are logged, not thrown.
     /// </summary>
     private void OnReconnected()
     {
@@ -249,10 +248,10 @@ internal class RabbitMqConnection : IRabbitMqConnection
     }
 
     /// <summary>
-    /// The event handler for reconnecting when the connection is shutdown.
-    /// The reconnecting is started in the background and the handler returns immediately: the RabbitMQ client raises
-    /// this event before notifying the channels of the connection about the shutdown, so the connection must not be
-    /// disposed (and the client must not be blocked) here. Otherwise, the consumer channels are never notified.
+    /// Reconnects when the connection is lost.
+    /// Only starts reconnecting in the background: the RabbitMQ client notifies the channels about the shutdown
+    /// after this handler, and silently skips them if the connection is already disposed. So the connection must not
+    /// be disposed (nor the client blocked) here, otherwise consumers are never recreated.
     /// </summary>
     private Task OnConnectionShutdownAsync(object sender, ShutdownEventArgs reason)
     {
@@ -272,12 +271,10 @@ internal class RabbitMqConnection : IRabbitMqConnection
     private static readonly TimeSpan ReconnectRetryDelay = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// Starts reconnecting in the background, so the event handlers of the RabbitMQ client return immediately.
+    /// Reconnects in the background, so the RabbitMQ client's event handlers return immediately.
     /// </summary>
-    /// <param name="connection">The connection which raised the event.</param>
-    /// <param name="closeOpenedConnection">
-    /// Whether the connection should be closed and recreated even if it is still opened (e.g. it is blocked).
-    /// </param>
+    /// <param name="connection">The connection that raised the event.</param>
+    /// <param name="closeOpenedConnection">Close the connection first, even if it is still open (e.g. blocked).</param>
     private void StartReconnecting(IConnection connection, bool closeOpenedConnection)
     {
         if (_disposed) return;
@@ -296,7 +293,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
             {
                 if (_disposed) return;
 
-                // Closes the connection only if it is still the current one, to not close the reconnected one.
+                // Only if it is still the current one, not an already reconnected one.
                 if (connection is null || ReferenceEquals(connection, _connection))
                     DisposeConnectionIfExists();
             }
@@ -476,7 +473,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
         }
         catch (Exception ex)
         {
-            // The RabbitMQ client throws when unsubscribing from a disposed connection.
+            // Unsubscribing from a disposed connection throws.
             _logger.LogDebug(ex, "Error while unsubscribing from the events of the old RabbitMQ connection.");
         }
 

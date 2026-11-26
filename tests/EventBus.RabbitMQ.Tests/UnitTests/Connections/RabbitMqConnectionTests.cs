@@ -104,7 +104,7 @@ public class RabbitMqConnectionTests : BaseTestEntity
             Assert.That(isReconnectedRaised, Is.False);
             Assert.That(HasLogContaining(LogLevel.Information, connectionId.ToString()), Is.True);
         }
-        // The id is a part of the connection name, to find the connection in the management UI of RabbitMQ.
+        // The id is in the connection name, to find it in the management UI.
         await connectionFactory.Received(1)
             .CreateConnectionAsync(Arg.Is<string>(name => name.Contains(connectionId.ToString())),
                 Arg.Any<CancellationToken>());
@@ -125,7 +125,7 @@ public class RabbitMqConnectionTests : BaseTestEntity
 
         await InvokeConnectionShutdownAsync(lostConnection);
 
-        // The RabbitMQ client notifies the channels after this handler, so the connection must still be usable by them.
+        // The client notifies the channels after this handler, so the connection must not be disposed yet.
         lostConnection.DidNotReceive().Dispose();
         var openedConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
         newConnectionCreating.SetResult(openedConnection);
@@ -251,7 +251,7 @@ public class RabbitMqConnectionTests : BaseTestEntity
     }
 
     /// <summary>
-    /// Sets up the connection factory to return the given connection first, and then the given next connections.
+    /// Sets up the connection factory to return the given connection first, then the next ones.
     /// </summary>
     private IConnectionFactory SetupConnectionFactory(IConnection firstConnection,
         params Task<IConnection>[] nextConnections)
@@ -265,7 +265,7 @@ public class RabbitMqConnectionTests : BaseTestEntity
     }
 
     /// <summary>
-    /// Invokes the handler of the shutdown event of the given connection, as the RabbitMQ client does when it is lost.
+    /// Invokes the shutdown handler, as the RabbitMQ client does when the connection is lost.
     /// </summary>
     private async Task InvokeConnectionShutdownAsync(IConnection connection)
     {

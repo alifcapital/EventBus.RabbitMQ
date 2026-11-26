@@ -99,18 +99,19 @@ internal class EventConsumerService : IEventConsumerService
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// The <see cref="IRabbitMqConnection.ConnectionId"/> of the connection on which the current consumer
-    /// channel is created, to detect a channel of an old (lost) connection.
+    /// Id of the connection the current channel was created on, to detect a channel of a lost connection.
     /// </summary>
     private Guid _consumerChannelConnectionId;
 
     /// <summary>
-    /// Whether the background loop retrying to create the consumer is running, to not start more than one at a time.
+    /// 1 while <see cref="RetryCreateChannelAndSubscribeReceiverAsync"/> is running, otherwise 0, so only one retry
+    /// loop is started. An <see cref="int"/> instead of a <see cref="bool"/>, to be used with <see cref="Interlocked"/>.
     /// </summary>
     private int _isRetrying;
 
     /// <summary>
-    /// Whether the consumer is subscribed to the <see cref="IRabbitMqConnection.Reconnected"/> event.
+    /// 1 while subscribed to <see cref="IRabbitMqConnection.Reconnected"/>, otherwise 0, so it is subscribed only once.
+    /// An <see cref="int"/> instead of a <see cref="bool"/>, to be used with <see cref="Interlocked"/>.
     /// </summary>
     private int _isSubscribedToReconnected;
 
@@ -128,11 +129,10 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     /// <summary>
-    /// Makes sure the consumer is receiving events. If it fails, the failure is logged and a background retry loop
-    /// is started.
+    /// Runs <see cref="EnsureConsumerAsync"/>; on failure, logs it and starts the retry loop.
     /// </summary>
-    /// <param name="channelToRecreate">The channel which is known to be broken and must be recreated, if any.</param>
-    /// <param name="cancellationToken">Cancellation token of the application.</param>
+    /// <param name="channelToRecreate">A channel known to be broken, recreated even if it reports open.</param>
+    /// <param name="cancellationToken">The application's stopping token.</param>
     private async Task EnsureConsumerOrStartRetryingAsync(IChannel channelToRecreate,
         CancellationToken cancellationToken)
     {
@@ -204,12 +204,11 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     /// <summary>
-    /// Creates the consumer channel and starts consuming from the queue, unless the current consumer channel is
-    /// still opened on the current connection. The old channel is disposed before creating a new one, so there is
-    /// never more than one consumer of this service on the queue. Throws if creating fails.
+    /// (Re)creates the consumer, unless its channel is open on the current connection. The old channel is disposed
+    /// first, so the service never has two consumers on the queue. Throws if creating fails.
     /// </summary>
-    /// <param name="channelToRecreate">The channel which is known to be broken and must be recreated, if any.</param>
-    /// <param name="cancellationToken">Cancellation token of the application.</param>
+    /// <param name="channelToRecreate">A channel known to be broken, recreated even if it reports open.</param>
+    /// <param name="cancellationToken">The application's stopping token.</param>
     private async Task EnsureConsumerAsync(IChannel channelToRecreate, CancellationToken cancellationToken)
     {
         await _reopenChannelGate.WaitAsync(cancellationToken);
@@ -251,6 +250,9 @@ internal class EventConsumerService : IEventConsumerService
         try
         {
             channel = await CreateConsumerChannelAsync(cancellationToken);
+            // Read right after creating the channel, so a reconnect during BasicConsumeAsync is not missed.
+            // Otherwise, a channel of the lost connection could get the new connection's ID if that is recreated.
+            var channelConnectionId = _connection.ConnectionId;
             var consumer = new AsyncEventingBasicConsumer(channel);
             consumer.ReceivedAsync += Consumer_ReceivingEvent;
             var consumerTag = await channel.BasicConsumeAsync(
@@ -260,7 +262,7 @@ internal class EventConsumerService : IEventConsumerService
                 cancellationToken: cancellationToken);
 
             _consumerChannel = channel;
-            _consumerChannelConnectionId = _connection.ConnectionId;
+            _consumerChannelConnectionId = channelConnectionId;
             _consumerTag = consumerTag;
         }
         catch (Exception e)
@@ -277,9 +279,9 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     /// <summary>
-    /// To create a channel for consumer. If the channel is disconnected, it will try to create a new one.
+    /// Creates a consumer channel and declares its exchange, queue and bindings. Disposes the channel if any of them fails.
     /// </summary>
-    /// <returns>Returns create a channel</returns>
+    /// <returns>The created channel.</returns>
     private async Task<IChannel> CreateConsumerChannelAsync(CancellationToken cancellationToken)
     {
         _logger.LogTrace("Creating RabbitMQ consumer channel");
@@ -327,8 +329,7 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     /// <summary>
-    /// Unsubscribes from the events of the given channel and disposes it. The errors are ignored, since the channel
-    /// is usually already broken.
+    /// Unsubscribes from the channel's events and disposes it, ignoring errors (it is usually already broken).
     /// </summary>
     private void DisposeChannel(IChannel channel)
     {
@@ -350,7 +351,7 @@ internal class EventConsumerService : IEventConsumerService
     #region Channel and connection events
 
     /// <summary>
-    /// The event handler for recreating the consumer channel when an exception is thrown.
+    /// Recreates the consumer channel after an exception in it.
     /// </summary>
     private Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
@@ -365,8 +366,7 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     /// <summary>
-    /// The event handler for recreating the consumer channel when it is shut down unexpectedly, e.g. because the
-    /// underlying RabbitMQ connection dropped.
+    /// Recreates the consumer channel after it is shut down, e.g. because its connection is lost.
     /// </summary>
     private Task OnChannelShutdownAsync(object sender, ShutdownEventArgs reason)
     {
@@ -381,8 +381,7 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     /// <summary>
-    /// The event handler for recreating the consumer channel after the connection is reconnected. It covers the case
-    /// when the channel is not notified about the shutdown of the lost connection.
+    /// Recreates the consumer after a reconnect, in case its channel missed the shutdown notification.
     /// </summary>
     private void OnConnectionReconnected(object sender, EventArgs e)
     {
@@ -392,8 +391,8 @@ internal class EventConsumerService : IEventConsumerService
     }
 
     /// <summary>
-    /// Starts recreating the consumer in the background, so the event handlers of the RabbitMQ client are not blocked
-    /// while the connection is being reopened: the client notifies the channels of a lost connection one by one.
+    /// Recreates the consumer in the background, so the RabbitMQ client's event handlers are not blocked
+    /// (the client notifies the channels of a lost connection one by one).
     /// </summary>
     private void StartEnsuringConsumer(IChannel channelToRecreate)
     {
@@ -422,7 +421,7 @@ internal class EventConsumerService : IEventConsumerService
         if (Interlocked.Exchange(ref _isSubscribedToReconnected, 0) == 1)
             _connection.Reconnected -= OnConnectionReconnected;
 
-        // Waits for the channel being recreated at the moment, so it is not left consuming after stopping.
+        // Wait for a channel being recreated right now, so it does not keep consuming after the stop.
         var isGateAcquired = false;
         try
         {
@@ -449,7 +448,7 @@ internal class EventConsumerService : IEventConsumerService
                 _reopenChannelGate.Release();
         }
 
-        // A channel of an old (lost) connection may still report that it is open, but it cannot be used anymore.
+        // A channel of a lost connection may still report open, but it cannot be used.
         var isChannelUsable = channel.IsOpen && channelConnectionId == _connection.ConnectionId;
         try
         {

@@ -165,17 +165,17 @@ RabbitMQ AMQP delivery → EventConsumerService.Consumer_ReceivingEvent()
 ### `RabbitMqConnection` resilience
 - Initial connect: **Polly** exponential backoff, retries on `SocketException` / `BrokerUnreachableException`
 - Retry count configured by `RetryConnectionCount` (default: `3`)
-- Auto-reconnects on `ConnectionShutdown`, `CallbackException`, `ConnectionBlocked`; if reconnecting fails, retries every minute (one retry loop at a time)
-- The handlers only **start** reconnecting in the background and return immediately. **Never dispose the connection inside its `ConnectionShutdownAsync` handler**: RabbitMQ.Client raises it before notifying the channels, and a disposed connection makes the client silently skip `ChannelShutdownAsync` of every channel → consumers are never recreated
-- The new connection is opened first, then the old (lost) one is disposed; it gets a new `ConnectionId` (`Guid`, `Guid.Empty` before the first connect) and `Reconnected` is raised after a reconnect
-- `ConnectionId` is read and written under `_connectionIdLock` (a `Guid` cannot be read atomically); it is a part of the connection name in the management UI (`For the {VirtualHost} from the {App} service ({ConnectionId})`) and of the open/shutdown log messages
+- Auto-reconnects on `ConnectionShutdown`, `CallbackException`, `ConnectionBlocked`; on failure retries every minute (one loop at a time)
+- Handlers only **start** reconnecting in the background. **Never dispose the connection inside its `ConnectionShutdownAsync` handler**: the client notifies the channels after it and silently skips them if the connection is disposed → consumers are never recreated
+- The new connection opens first, then the old one is disposed; each connection gets a new `ConnectionId` (`Guid`, `Guid.Empty` before the first) and `Reconnected` is raised after a reconnect
+- `ConnectionId` is guarded by `_connectionIdLock` (a `Guid` is not atomic) and appears in the connection name (`For the {VirtualHost} from the {App} service ({ConnectionId})`) and logs
 - `SemaphoreSlim _connectionGate` prevents concurrent reconnects
 
 ### Consumer recovery (`EventConsumerService`)
-- Recreated on `ChannelShutdownAsync`, `CallbackExceptionAsync` and the connection's `Reconnected` event (safety net when a channel is not notified); the work runs in the background, not inside the RabbitMQ client's handlers
-- `EnsureConsumerAsync` (under `_reopenChannelGate`) keeps the channel if it is open and belongs to the current `ConnectionId`; otherwise disposes the old channel and creates a new one → never two consumers of one service on a queue
-- On failure, retries every minute (one retry loop at a time)
-- `StopReceivingEventsAsync` does not cancel/close a channel of a lost connection; `AlreadyClosedException` is logged at `Debug`
+- Recreated in the background on `ChannelShutdownAsync`, `CallbackExceptionAsync` and `Reconnected` (for a channel that missed the shutdown)
+- `EnsureConsumerAsync` (under `_reopenChannelGate`) keeps a channel only if it is open on the current `ConnectionId`; otherwise disposes it and creates a new one → never two consumers per queue
+- On failure retries every minute (one loop at a time)
+- `StopReceivingEventsAsync` skips cancelling/closing a channel of a lost connection; `AlreadyClosedException` is logged at `Debug`
 
 ### TLS / SSL
 Set `UseTls: true` per virtual host or globally. Requires cert files on disk:

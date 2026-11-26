@@ -210,7 +210,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     {
         var channel = SetupConsumerChannel();
         await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
-        // The channel still reports that it is open, but its connection is lost and replaced with a new one.
+        // The channel still reports open, but its connection was replaced.
         _connection.ConnectionId.Returns(Guid.CreateVersion7());
 
         await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
@@ -319,7 +319,7 @@ public class EventConsumerServiceTests : BaseTestEntity
 
         await InvokePrivateMethodAsync(_consumerService, "OnChannelShutdownAsync", reason);
 
-        // The channel is recreated in the background, so the RabbitMQ client is not blocked by the handler.
+        // The channel is recreated in the background.
         await WaitUntilAsync(() => CountCreatedConsumerChannels() == 2);
         Assert.That(CountCreatedConsumerChannels(), Is.EqualTo(2));
     }
@@ -353,7 +353,7 @@ public class EventConsumerServiceTests : BaseTestEntity
             Task.Run(() => _connection.Reconnected += Raise.Event()));
 
         await WaitUntilAsync(() => channels.Count >= 2);
-        // Gives the second (duplicate) recreation request time to complete, to assert it did not create a consumer.
+        // Let the duplicate request finish before asserting it created nothing.
         await Task.Delay(TimeSpan.FromMilliseconds(300));
         Assert.That(channels, Has.Count.EqualTo(2));
     }
@@ -367,7 +367,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     {
         var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
         await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
-        // The channel of a lost connection may still report that it is open, when it is not notified about the shutdown.
+        // A channel that missed the shutdown notification still reports open.
         _connection.ConnectionId.Returns(Guid.CreateVersion7());
 
         _connection.Reconnected += Raise.Event();
@@ -582,8 +582,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     }
 
     /// <summary>
-    /// Sets up the connection to create a new consumer channel each time, so the recreated channel can be told apart
-    /// from the old one.
+    /// Sets up the connection to create a new channel each time, to tell the recreated channel from the old one.
     /// </summary>
     /// <returns>The channels created so far, in the order of creation.</returns>
     private List<IChannel> SetupConsumerChannelsCreatingNewChannelEachTime()
@@ -602,7 +601,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     }
 
     /// <summary>
-    /// Sets up the connection creating the consumer channels with the given factory, and creates the consumer.
+    /// Sets up the connection to create channels with the given factory, and creates the consumer.
     /// </summary>
     private void SetupConsumerConnection(Func<CallInfo, IChannel> channelFactory)
     {
@@ -656,7 +655,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     }
 
     /// <summary>
-    /// Waits until the condition is met or the timeout elapses, for the work which is done in the background.
+    /// Waits up to 5 seconds for the condition, for work done in the background.
     /// </summary>
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

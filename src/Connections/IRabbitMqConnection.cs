@@ -6,10 +6,8 @@ namespace EventBus.RabbitMQ.Connections;
 public interface IRabbitMqConnection : IDisposable
 {
     /// <summary>
-    /// The id of the RabbitMQ connection that is currently used, or <see cref="Guid.Empty"/> before the first connect.
-    /// A new id is assigned each time a new connection is opened (on the first connect and on each reconnect), so the
-    /// channels created on an old connection can be detected. It is also a part of the connection name shown in the
-    /// management UI of RabbitMQ and is written to the logs.
+    /// ID of the current connection; a new one is assigned to each opened connection.
+    /// Used to detect channels of a lost connection, and shown in the connection name and the logs.
     /// </summary>
     Guid ConnectionId { get; }
     
@@ -19,8 +17,7 @@ public interface IRabbitMqConnection : IDisposable
     bool IsConnected { get; }
 
     /// <summary>
-    /// Raised after a new RabbitMQ connection is opened to replace the lost one, so the consumers can recreate their
-    /// channels. The handlers must return quickly, e.g. by starting their work in the background.
+    /// Executed after a lost connection is replaced with a new one, so consumers can recreate their channels.
     /// </summary>
     event EventHandler Reconnected;
 
