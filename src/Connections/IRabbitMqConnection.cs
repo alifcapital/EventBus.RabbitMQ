@@ -6,9 +6,20 @@ namespace EventBus.RabbitMQ.Connections;
 public interface IRabbitMqConnection : IDisposable
 {
     /// <summary>
+    /// ID of the current connection; a new one is assigned to each opened connection.
+    /// Used to detect channels of a lost connection, and shown in the connection name and the logs.
+    /// </summary>
+    Guid ConnectionId { get; }
+    
+    /// <summary>
     /// Returns true, when RabbitMQ connected
     /// </summary>
     bool IsConnected { get; }
+
+    /// <summary>
+    /// Executed after a lost connection is replaced with a new one, so consumers can recreate their channels.
+    /// </summary>
+    event EventHandler Reconnected;
 
     /// <summary>
     /// For connecting the server to the RabbitMQ.

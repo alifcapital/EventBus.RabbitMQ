@@ -165,9 +165,17 @@ RabbitMQ AMQP delivery → EventConsumerService.Consumer_ReceivingEvent()
 ### `RabbitMqConnection` resilience
 - Initial connect: **Polly** exponential backoff, retries on `SocketException` / `BrokerUnreachableException`
 - Retry count configured by `RetryConnectionCount` (default: `3`)
-- Auto-reconnects on `ConnectionShutdown`, `CallbackException`, `ConnectionBlocked`
-- Consumer channel is re-created on `CallbackException` via `CreateChannelAndSubscribeReceiverAsync`
+- Auto-reconnects on `ConnectionShutdown`, `CallbackException`, `ConnectionBlocked`; on failure retries every minute (one loop at a time)
+- Handlers only **start** reconnecting in the background. **Never dispose the connection inside its `ConnectionShutdownAsync` handler**: the client notifies the channels after it and silently skips them if the connection is disposed → consumers are never recreated
+- The new connection opens first, then the old one is disposed; each connection gets a new `ConnectionId` (`Guid`, `Guid.Empty` before the first) and `Reconnected` is raised after a reconnect
+- `ConnectionId` is guarded by `_connectionIdLock` (a `Guid` is not atomic) and appears in the connection name (`For the {VirtualHost} from the {App} service ({ConnectionId})`) and logs
 - `SemaphoreSlim _connectionGate` prevents concurrent reconnects
+
+### Consumer recovery (`EventConsumerService`)
+- Recreated in the background on `ChannelShutdownAsync`, `CallbackExceptionAsync` and `Reconnected` (for a channel that missed the shutdown)
+- `EnsureConsumerAsync` (under `_reopenChannelGate`) keeps a channel only if it is open on the current `ConnectionId`; otherwise disposes it and creates a new one → never two consumers per queue
+- On failure retries every minute (one loop at a time)
+- `StopReceivingEventsAsync` skips cancelling/closing a channel of a lost connection; `AlreadyClosedException` is logged at `Debug`
 
 ### TLS / SSL
 Set `UseTls: true` per virtual host or globally. Requires cert files on disk:

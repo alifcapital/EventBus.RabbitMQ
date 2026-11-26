@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitMQ.Client.Exceptions;
 
 namespace EventBus.RabbitMQ.Subscribers.Consumers;
 
@@ -28,7 +29,7 @@ internal class EventConsumerService : IEventConsumerService
     private readonly IRabbitMqConnection _connection;
     private IChannel _consumerChannel;
     private CancellationToken _serviceCancellationToken;
-    
+
     /// <summary>
     /// The tag/id of newly created consumer channel to use for closing the opened channel if needed.
     /// </summary>
@@ -98,15 +99,50 @@ internal class EventConsumerService : IEventConsumerService
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMinutes(1);
 
     /// <summary>
+    /// Id of the connection the current channel was created on, to detect a channel of a lost connection.
+    /// </summary>
+    private Guid _consumerChannelConnectionId;
+
+    /// <summary>
+    /// 1 while <see cref="RetryCreateChannelAndSubscribeReceiverAsync"/> is running, otherwise 0, so only one retry
+    /// loop is started. An <see cref="int"/> instead of a <see cref="bool"/>, to be used with <see cref="Interlocked"/>.
+    /// </summary>
+    private int _isRetrying;
+
+    /// <summary>
+    /// 1 while subscribed to <see cref="IRabbitMqConnection.Reconnected"/>, otherwise 0, so it is subscribed only once.
+    /// An <see cref="int"/> instead of a <see cref="bool"/>, to be used with <see cref="Interlocked"/>.
+    /// </summary>
+    private int _isSubscribedToReconnected;
+
+    /// <summary>
     /// Starts receiving events by creating a consumer. If it fails, the failure is logged and a background retry
     /// loop is started, retrying every <see cref="RetryDelay"/> until it succeeds or the cancellation is requested.
     /// </summary>
     public async Task CreateChannelAndSubscribeReceiverAsync(CancellationToken cancellationToken)
     {
         _serviceCancellationToken = cancellationToken;
+        if (!_isStopping)
+        {
+            var shouldSubscribeToReconnected = Interlocked.Exchange(ref _isSubscribedToReconnected, 1) == 0;
+            if (shouldSubscribeToReconnected)
+                _connection.Reconnected += OnConnectionReconnected;
+        }
+
+        await RecreateConsumerOrStartRetryingAsync(channelToRecreate: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs <see cref="RecreateConsumerIfNotUsableAsync"/>; on failure, logs it and starts the retry loop.
+    /// </summary>
+    /// <param name="channelToRecreate">A channel known to be broken, recreated even if it reports open.</param>
+    /// <param name="cancellationToken">The application's stopping token.</param>
+    private async Task RecreateConsumerOrStartRetryingAsync(IChannel channelToRecreate,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            await CreateChannelAndStartConsumingAsync(cancellationToken);
+            await RecreateConsumerIfNotUsableAsync(channelToRecreate, cancellationToken);
         }
         catch (Exception) when (IsStopping)
         {
@@ -118,7 +154,9 @@ internal class EventConsumerService : IEventConsumerService
                 "Error while creating a channel and subscribing to a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host. Will keep retrying every {RetryDelay} until it succeeds.",
                 _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, RetryDelay);
 
-            _ = RetryCreateChannelAndSubscribeReceiverAsync(cancellationToken);
+            var shouldStartRetryLoop = Interlocked.Exchange(ref _isRetrying, 1) == 0;
+            if (shouldStartRetryLoop)
+                _ = RetryCreateChannelAndSubscribeReceiverAsync(cancellationToken);
         }
     }
 
@@ -128,38 +166,96 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private async Task RetryCreateChannelAndSubscribeReceiverAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested && !_isStopping)
+        try
         {
-            try
+            while (!cancellationToken.IsCancellationRequested && !_isStopping)
             {
-                await Task.Delay(RetryDelay, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+                try
+                {
+                    await Task.Delay(RetryDelay, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
 
-            if (_isStopping) break;
+                if (_isStopping) break;
 
-            try
+                try
+                {
+                    var isCreated = await RecreateConsumerIfNotUsableAsync(channelToRecreate: null, cancellationToken);
+                    if (isCreated)
+                    {
+                        _logger.LogInformation(
+                            "Successfully created a channel and subscribed a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host after retrying.",
+                            _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+                    }
+                    else
+                    {
+                        _logger.LogDebug(
+                            "Stopped retrying: the consumer of '{QueueName}' queue of '{VirtualHost}' virtual host is already running.",
+                            _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+                    }
+
+                    return;
+                }
+                catch (Exception) when (IsStopping)
+                {
+                    // The application is stopping, so the error is caused by the shutdown and there is no need to retry.
+                    break;
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e,
+                        "Retry failed while creating a channel and subscribing to a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host. Will retry again in {RetryDelay}.",
+                        _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, RetryDelay);
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isRetrying, 0);
+        }
+    }
+
+    /// <summary>
+    /// (Re)creates the consumer, unless its channel is open on the current connection. The old channel is disposed
+    /// first, so the service never has two consumers on the queue. Throws if creating fails.
+    /// </summary>
+    /// <param name="channelToRecreate">A channel known to be broken, recreated even if it reports open.</param>
+    /// <param name="cancellationToken">The application's stopping token.</param>
+    /// <returns>True if a consumer was created; false if the current one is still usable or the service is stopping.</returns>
+    private async Task<bool> RecreateConsumerIfNotUsableAsync(IChannel channelToRecreate,
+        CancellationToken cancellationToken)
+    {
+        await _reopenChannelGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_isStopping) return false;
+
+            var currentChannel = _consumerChannel;
+            if (currentChannel is not null)
             {
-                await CreateChannelAndStartConsumingAsync(cancellationToken);
-                _logger.LogInformation(
-                    "Successfully created a channel and subscribed a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host after retrying.",
+                var isCurrentChannelBroken = ReferenceEquals(currentChannel, channelToRecreate);
+                if (!isCurrentChannelBroken && currentChannel.IsOpen &&
+                    _consumerChannelConnectionId == _connection.ConnectionId)
+                    return false;
+
+                _logger.LogWarning(
+                    "Recreating RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host.",
                     _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
-                return;
+
+                DisposeChannel(currentChannel);
+                _consumerChannel = null;
+                _consumerTag = null;
             }
-            catch (Exception) when (IsStopping)
-            {
-                // The application is stopping, so the error is caused by the shutdown and there is no need to retry.
-                break;
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e,
-                    "Retry failed while creating a channel and subscribing to a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host. Will retry again in {RetryDelay}.",
-                    _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, RetryDelay);
-            }
+
+            await CreateChannelAndStartConsumingAsync(cancellationToken);
+            return true;
+        }
+        finally
+        {
+            _reopenChannelGate.Release();
         }
     }
 
@@ -168,60 +264,83 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     private async Task CreateChannelAndStartConsumingAsync(CancellationToken cancellationToken)
     {
+        IChannel channel = null;
         try
         {
-            _consumerChannel = await CreateConsumerChannelAsync(cancellationToken);
-            var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
+            channel = await CreateConsumerChannelAsync(cancellationToken);
+            // Read right after creating the channel, so a reconnect during BasicConsumeAsync is not missed.
+            // Otherwise, a channel of the lost connection could get the new connection's ID if that is recreated.
+            var channelConnectionId = _connection.ConnectionId;
+            var consumer = new AsyncEventingBasicConsumer(channel);
             consumer.ReceivedAsync += Consumer_ReceivingEvent;
-            _consumerTag = await _consumerChannel.BasicConsumeAsync(
+            var consumerTag = await channel.BasicConsumeAsync(
                 queue: _connectionOptions.QueueName,
                 autoAck: false,
                 consumer: consumer,
                 cancellationToken: cancellationToken);
+
+            _consumerChannel = channel;
+            _consumerChannelConnectionId = channelConnectionId;
+            _consumerTag = consumerTag;
         }
-        catch (IOException e)
+        catch (Exception e)
         {
-            throw new EventBusException(e,
-                $"Error while creating RabbitMQ consumer channel for '{_connectionOptions.QueueName}' queue of '{_connectionOptions.VirtualHostSettings.VirtualHost}' virtual host.");
+            if (channel is not null)
+                DisposeChannel(channel);
+
+            if (e is IOException)
+                throw new EventBusException(e,
+                    $"Error while creating RabbitMQ consumer channel for '{_connectionOptions.QueueName}' queue of '{_connectionOptions.VirtualHostSettings.VirtualHost}' virtual host.");
+
+            throw;
         }
     }
 
     /// <summary>
-    /// To create a channel for consumer. If the channel is disconnected, it will try to create a new one.
+    /// Creates a consumer channel and declares its exchange, queue and bindings. Disposes the channel if any of them fails.
     /// </summary>
-    /// <returns>Returns create a channel</returns>
+    /// <returns>The created channel.</returns>
     private async Task<IChannel> CreateConsumerChannelAsync(CancellationToken cancellationToken)
     {
         _logger.LogTrace("Creating RabbitMQ consumer channel");
 
         var channel = await _connection.CreateConsumerChannelAsync(cancellationToken);
-
-        var virtualHostSettings = _connectionOptions.VirtualHostSettings;
-        await channel.ExchangeDeclareAsync(
-            exchange: virtualHostSettings.ExchangeName,
-            type: virtualHostSettings.ExchangeType,
-            durable: true,
-            autoDelete: false,
-            arguments: virtualHostSettings.ExchangeArguments,
-            noWait: false,
-            cancellationToken: cancellationToken);
-
-        await channel.QueueDeclareAsync(
-            queue: _connectionOptions.QueueName,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            arguments: virtualHostSettings.QueueArguments,
-            noWait: false,
-            cancellationToken: cancellationToken);
-        foreach (var eventSettings in _subscribers.Values.Select(s => s.Settings))
-            await channel.QueueBindAsync(
-                queue: _connectionOptions.QueueName,
+        try
+        {
+            var virtualHostSettings = _connectionOptions.VirtualHostSettings;
+            await channel.ExchangeDeclareAsync(
                 exchange: virtualHostSettings.ExchangeName,
-                routingKey: eventSettings.RoutingKey,
-                arguments: null,
+                type: virtualHostSettings.ExchangeType,
+                durable: true,
+                autoDelete: false,
+                arguments: virtualHostSettings.ExchangeArguments,
                 noWait: false,
                 cancellationToken: cancellationToken);
+
+            await channel.QueueDeclareAsync(
+                queue: _connectionOptions.QueueName,
+                durable: true,
+                exclusive: false,
+                autoDelete: false,
+                arguments: virtualHostSettings.QueueArguments,
+                noWait: false,
+                cancellationToken: cancellationToken);
+
+            var eventsSettings = _subscribers.Values.Select(s => s.Settings);
+            foreach (var eventSettings in eventsSettings)
+                await channel.QueueBindAsync(
+                    queue: _connectionOptions.QueueName,
+                    exchange: virtualHostSettings.ExchangeName,
+                    routingKey: eventSettings.RoutingKey,
+                    arguments: null,
+                    noWait: false,
+                    cancellationToken: cancellationToken);
+        }
+        catch
+        {
+            DisposeChannel(channel);
+            throw;
+        }
 
         channel.CallbackExceptionAsync += OnCallbackExceptionAsync;
         channel.ChannelShutdownAsync += OnChannelShutdownAsync;
@@ -229,91 +348,77 @@ internal class EventConsumerService : IEventConsumerService
         return channel;
     }
 
+    /// <summary>
+    /// Unsubscribes from the channel's events and disposes it, ignoring errors (it is usually already broken).
+    /// </summary>
+    private void DisposeChannel(IChannel channel)
+    {
+        UnsubscribeChannelEvents(channel);
+        try
+        {
+            channel.Dispose();
+        }
+        catch (Exception e)
+        {
+            _logger.LogDebug(e,
+                "Error while disposing the old RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host.",
+                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+        }
+    }
+
     #endregion
 
-    #region Channel events
+    #region Channel and connection events
 
     /// <summary>
-    /// The event handler for recreating the consumer channel when an exception is thrown.
+    /// Recreates the consumer channel after an exception in it.
     /// </summary>
-    private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
+    private Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
-        if (_isStopping) return;
+        if (IsStopping) return Task.CompletedTask;
 
-        try
-        {
-            await _reopenChannelGate.WaitAsync(_serviceCancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
+        _logger.LogWarning(e.Exception,
+            "An exception is thrown in the RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host. The channel will be recreated.",
+            _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
 
-        try
-        {
-            _logger.LogWarning(e.Exception,
-                "Recreating RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host after exception.",
-                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
-
-            try
-            {
-                UnsubscribeChannelEvents(_consumerChannel);
-                _consumerChannel.Dispose();
-            }
-            catch (Exception ex)
-            {
-                var message =
-                    $"Error while recreating RabbitMQ consumer channel for '{_connectionOptions.QueueName}' queue of '{_connectionOptions.VirtualHostSettings.VirtualHost}' virtual host after exception";
-                _logger.LogError(ex, message);
-                throw new EventBusException(ex, message);
-            }
-        }
-        finally
-        {
-            _reopenChannelGate.Release();
-        }
-
-        await CreateChannelAndSubscribeReceiverAsync(_serviceCancellationToken);
+        StartRecreatingConsumer(sender as IChannel ?? _consumerChannel);
+        return Task.CompletedTask;
     }
 
     /// <summary>
-    /// The event handler for recreating the consumer channel when it is shut down unexpectedly, e.g. because the
-    /// underlying RabbitMQ connection dropped and was reconnected by <see cref="IRabbitMqConnection"/>.
+    /// Recreates the consumer channel after it is shut down, e.g. because its connection is lost.
     /// </summary>
-    private async Task OnChannelShutdownAsync(object sender, ShutdownEventArgs reason)
+    private Task OnChannelShutdownAsync(object sender, ShutdownEventArgs reason)
     {
-        if (_isStopping) return;
+        if (IsStopping) return Task.CompletedTask;
 
-        try
-        {
-            await _reopenChannelGate.WaitAsync(_serviceCancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
+        _logger.LogWarning(
+            "The RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host is shut down. The channel will be recreated. Reason: {Reason}",
+            _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, reason);
 
-        try
-        {
-            _logger.LogWarning(
-                "Recreating RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host after it was shut down. Reason: {Reason}",
-                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, reason);
+        StartRecreatingConsumer(sender as IChannel ?? _consumerChannel);
+        return Task.CompletedTask;
+    }
 
-            UnsubscribeChannelEvents(_consumerChannel);
-            _consumerChannel.Dispose();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Error while disposing the shut down RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host.",
-                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
-        }
-        finally
-        {
-            _reopenChannelGate.Release();
-        }
+    /// <summary>
+    /// Recreates the consumer after a reconnect, in case its channel missed the shutdown notification.
+    /// </summary>
+    private void OnConnectionReconnected(object sender, EventArgs e)
+    {
+        if (IsStopping) return;
 
-        await CreateChannelAndSubscribeReceiverAsync(_serviceCancellationToken);
+        StartRecreatingConsumer(channelToRecreate: null);
+    }
+
+    /// <summary>
+    /// Recreates the consumer in the background, so the RabbitMQ client's event handlers are not blocked
+    /// (the client notifies the channels of a lost connection one by one).
+    /// </summary>
+    private void StartRecreatingConsumer(IChannel channelToRecreate)
+    {
+        var cancellationToken = _serviceCancellationToken;
+        _ = Task.Run(() => RecreateConsumerOrStartRetryingAsync(channelToRecreate, cancellationToken),
+            CancellationToken.None);
     }
 
     /// <summary>
@@ -333,15 +438,49 @@ internal class EventConsumerService : IEventConsumerService
     public async Task StopReceivingEventsAsync(CancellationToken cancellationToken)
     {
         _isStopping = true;
+        var shouldUnsubscribeFromReconnected = Interlocked.Exchange(ref _isSubscribedToReconnected, 0) == 1;
+        if (shouldUnsubscribeFromReconnected)
+            _connection.Reconnected -= OnConnectionReconnected;
 
-        var channel = _consumerChannel;
-        if (channel is null) return;
-
-        UnsubscribeChannelEvents(channel);
+        // Wait for a channel being recreated right now, so it does not keep consuming after the stop.
+        var isGateAcquired = false;
         try
         {
-            if (_consumerTag is not null && channel.IsOpen)
+            await _reopenChannelGate.WaitAsync(cancellationToken);
+            isGateAcquired = true;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        IChannel channel;
+        Guid channelConnectionId;
+        try
+        {
+            channel = _consumerChannel;
+            if (channel is null) return;
+
+            channelConnectionId = _consumerChannelConnectionId;
+            UnsubscribeChannelEvents(channel);
+        }
+        finally
+        {
+            if (isGateAcquired)
+                _reopenChannelGate.Release();
+        }
+
+        // A channel of a lost connection may still report open, but it cannot be used.
+        var isChannelUsable = channel.IsOpen && channelConnectionId == _connection.ConnectionId;
+        try
+        {
+            if (_consumerTag is not null && isChannelUsable)
                 await channel.BasicCancelAsync(_consumerTag, noWait: false, cancellationToken);
+        }
+        catch (AlreadyClosedException e)
+        {
+            _logger.LogDebug(e,
+                "The RabbitMQ consumer of '{QueueName}' queue of '{VirtualHost}' virtual host is already closed.",
+                _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -367,7 +506,7 @@ internal class EventConsumerService : IEventConsumerService
         try
         {
             // Closing the channel makes RabbitMQ redeliver the received but unacknowledged events.
-            if (channel.IsOpen)
+            if (isChannelUsable && channel.IsOpen)
                 await channel.CloseAsync(CancellationToken.None);
         }
         catch (Exception e)

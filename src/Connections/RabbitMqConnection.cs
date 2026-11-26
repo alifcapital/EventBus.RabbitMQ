@@ -16,6 +16,24 @@ internal class RabbitMqConnection : IRabbitMqConnection
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
     
     /// <summary>
+    /// Guards <see cref="_connectionId"/>: a <see cref="Guid"/> is not read and written in one step (atomically),
+    /// so without the lock another thread could see half of the old ID and half of the new one.
+    /// </summary>
+    private readonly Lock _connectionIdLock = new();
+    
+    private Guid _connectionId = Guid.Empty;
+    public Guid ConnectionId
+    {
+        get
+        {
+            lock (_connectionIdLock)
+                return _connectionId;
+        }
+    }
+
+    public event EventHandler Reconnected;
+
+    /// <summary>
     /// Used only for a temporary channel to verify that the RabbitMQ connection
     /// is actually open and usable before marking it as connected.
     /// </summary>
@@ -26,6 +44,12 @@ internal class RabbitMqConnection : IRabbitMqConnection
         consumerDispatchConcurrency: null
     );
 
+    /// <summary>
+    /// 1 while <see cref="RetryReconnectAsync"/> is running, otherwise 0, so only one retry loop is started.
+    /// An <see cref="int"/> instead of a <see cref="bool"/>, to be used with <see cref="Interlocked"/>.
+    /// </summary>
+    private int _isRetryingToReconnect;
+    
     private readonly IConnectionFactory _connectionFactory;
     private readonly RabbitMqHostSettings _connectionOptions;
     private readonly ILogger<RabbitMqConnection> _logger;
@@ -45,12 +69,15 @@ internal class RabbitMqConnection : IRabbitMqConnection
     {
         if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
 
+        var isReconnected = false;
         await _connectionGate.WaitAsync(cancellationToken);
         try
         {
             if (_disposed) throw new ObjectDisposedException(nameof(RabbitMqConnection));
             if (IsConnected) return;
 
+            IConnection newConnection = null;
+            var newConnectionId = Guid.CreateVersion7();
             try
             {
                 _logger.LogDebug(
@@ -65,38 +92,73 @@ internal class RabbitMqConnection : IRabbitMqConnection
 
                 var applicationName = AppDomain.CurrentDomain.FriendlyName;
                 var connectionDisplayName =
-                    $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
+                    $"For the {_connectionOptions.VirtualHost} from the {applicationName} service ({newConnectionId})";
 
-                _connection = await policy.ExecuteAsync(
+                newConnection = await policy.ExecuteAsync(
                     ct => _connectionFactory.CreateConnectionAsync(connectionDisplayName, ct),
                     cancellationToken);
 
-                if (IsConnected)
-                {
-                    await EnsureConnectionIsOpened(_connection, cancellationToken);
-                    _connection!.ConnectionShutdownAsync += OnConnectionShutdownAsync;
-                    _connection!.CallbackExceptionAsync += OnCallbackExceptionAsync;
-                    _connection!.ConnectionBlockedAsync += OnConnectionBlockedAsync;
-                    
-                    _logger.LogInformation(
-                        "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
-                        _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
-                }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
+                if (newConnection?.IsOpen != true)
+                    throw new EventBusException(
+                        $"The created RabbitMQ connection is not opened to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
+
+                await EnsureConnectionIsOpened(newConnection, cancellationToken);
+                newConnection.ConnectionShutdownAsync += OnConnectionShutdownAsync;
+                newConnection.CallbackExceptionAsync += OnCallbackExceptionAsync;
+                newConnection.ConnectionBlockedAsync += OnConnectionBlockedAsync;
             }
             catch (Exception e)
             {
-                DisposeConnectionIfExists();
+                if (newConnection is not null)
+                    DisposeConnection(newConnection);
+
+                if (e is OperationCanceledException && cancellationToken.IsCancellationRequested)
+                    throw;
+
                 throw new EventBusException(e,
                     $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.");
             }
+
+            // Dispose the old connection only now, after the new one is opened (see OnConnectionShutdownAsync).
+            var oldConnection = _connection;
+            _connection = newConnection;
+            lock (_connectionIdLock)
+            {
+                // Not the first connection, so it replaces a lost one.
+                isReconnected = _connectionId != Guid.Empty;
+                _connectionId = newConnectionId;
+            }
+            if (oldConnection is not null)
+                DisposeConnection(oldConnection);
+
+            _logger.LogInformation(
+                "The RabbitMQ connection '{ConnectionId}' is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
+                newConnectionId, _connectionOptions.HostName, _connectionOptions.HostPort,
+                _connectionOptions.VirtualHost);
         }
         finally
         {
             _connectionGate.Release();
+        }
+
+        if (isReconnected)
+            OnReconnected();
+    }
+
+    /// <summary>
+    /// Raises <see cref="Reconnected"/>; errors of the handlers are logged, not thrown.
+    /// </summary>
+    private void OnReconnected()
+    {
+        try
+        {
+            Reconnected?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e,
+                "Error while notifying about the reconnected RabbitMQ connection of the '{VirtualHost}' virtual host of '{HostName}'.",
+                _connectionOptions.VirtualHost, _connectionOptions.HostName);
         }
     }
 
@@ -169,25 +231,37 @@ internal class RabbitMqConnection : IRabbitMqConnection
     /// <summary>
     /// The event handler for reconnecting when the connection is blocked
     /// </summary>
-    private async Task OnConnectionBlockedAsync(object sender, ConnectionBlockedEventArgs e)
+    private Task OnConnectionBlockedAsync(object sender, ConnectionBlockedEventArgs e)
     {
-        await ReconnectAsync();
+        StartReconnecting(sender as IConnection, closeOpenedConnection: true);
+        return Task.CompletedTask;
     }
 
     /// <summary>
     /// The event handler for reconnecting when an exception is thrown
     /// </summary>
-    private async Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
+    private Task OnCallbackExceptionAsync(object sender, CallbackExceptionEventArgs e)
     {
-        await ReconnectAsync();
+        StartReconnecting(sender as IConnection, closeOpenedConnection: true);
+        return Task.CompletedTask;
     }
 
     /// <summary>
-    /// The event handler for reconnecting when the connection is shutdown
+    /// Reconnects when the connection is lost.
+    /// Only starts reconnecting in the background: the RabbitMQ client notifies the channels about the shutdown
+    /// after this handler, and silently skips them if the connection is already disposed. So the connection must not
+    /// be disposed (nor the client blocked) here, otherwise consumers are never recreated.
     /// </summary>
     private Task OnConnectionShutdownAsync(object sender, ShutdownEventArgs reason)
     {
-        return ReconnectAsync();
+        if (_disposed) return Task.CompletedTask;
+
+        _logger.LogWarning(
+            "The RabbitMQ connection '{ConnectionId}' to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host is shut down. Reconnecting. Reason: {Reason}",
+            ConnectionId, _connectionOptions.VirtualHost, _connectionOptions.HostName, reason);
+
+        StartReconnecting(sender as IConnection, closeOpenedConnection: false);
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -195,20 +269,37 @@ internal class RabbitMqConnection : IRabbitMqConnection
     /// </summary>
     private static readonly TimeSpan ReconnectRetryDelay = TimeSpan.FromMinutes(1);
 
-    private async Task ReconnectAsync()
+    /// <summary>
+    /// Reconnects in the background, so the RabbitMQ client's event handlers return immediately.
+    /// </summary>
+    /// <param name="connection">The connection that raised the event.</param>
+    /// <param name="closeOpenedConnection">Close the connection first, even if it is still open (e.g. blocked).</param>
+    private void StartReconnecting(IConnection connection, bool closeOpenedConnection)
     {
         if (_disposed) return;
 
-        await _connectionGate.WaitAsync(CancellationToken.None);
-        try
-        {
-            if (_disposed) return;
+        _ = Task.Run(() => ReconnectAsync(connection, closeOpenedConnection));
+    }
 
-            DisposeConnectionIfExists();
-        }
-        finally
+    private async Task ReconnectAsync(IConnection connection, bool closeOpenedConnection)
+    {
+        if (_disposed) return;
+
+        if (closeOpenedConnection)
         {
-            _connectionGate.Release();
+            await _connectionGate.WaitAsync(CancellationToken.None);
+            try
+            {
+                if (_disposed) return;
+
+                // Only if it is still the current one, not an already reconnected one.
+                if (connection is null || ReferenceEquals(connection, _connection))
+                    DisposeConnectionIfExists();
+            }
+            finally
+            {
+                _connectionGate.Release();
+            }
         }
 
         try
@@ -224,7 +315,9 @@ internal class RabbitMqConnection : IRabbitMqConnection
                 "Error while reconnecting to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host. Will keep retrying every {RetryDelay} until it succeeds.",
                 _connectionOptions.VirtualHost, _connectionOptions.HostName, ReconnectRetryDelay);
 
-            _ = RetryReconnectAsync();
+            var shouldStartRetryLoop = Interlocked.Exchange(ref _isRetryingToReconnect, 1) == 0;
+            if (shouldStartRetryLoop)
+                _ = RetryReconnectAsync();
         }
     }
 
@@ -233,37 +326,38 @@ internal class RabbitMqConnection : IRabbitMqConnection
     /// </summary>
     private async Task RetryReconnectAsync()
     {
-        while (!_disposed)
+        try
         {
-            try
+            while (!_disposed)
             {
                 await Task.Delay(ReconnectRetryDelay);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
 
-            if (_disposed) break;
+                if (_disposed) break;
+                if (IsConnected) return;
 
-            try
-            {
-                await ConnectAsync(CancellationToken.None);
-                _logger.LogInformation(
-                    "Successfully reconnected to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host after retrying.",
-                    _connectionOptions.VirtualHost, _connectionOptions.HostName);
-                return;
+                try
+                {
+                    await ConnectAsync(CancellationToken.None);
+                    _logger.LogInformation(
+                        "Successfully reconnected to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host after retrying.",
+                        _connectionOptions.VirtualHost, _connectionOptions.HostName);
+                    return;
+                }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e,
+                        "Retry failed while reconnecting to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host. Will retry again in {RetryDelay}.",
+                        _connectionOptions.VirtualHost, _connectionOptions.HostName, ReconnectRetryDelay);
+                }
             }
-            catch (ObjectDisposedException)
-            {
-                break;
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e,
-                    "Retry failed while reconnecting to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host. Will retry again in {RetryDelay}.",
-                    _connectionOptions.VirtualHost, _connectionOptions.HostName, ReconnectRetryDelay);
-            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isRetryingToReconnect, 0);
         }
     }
 
@@ -362,24 +456,34 @@ internal class RabbitMqConnection : IRabbitMqConnection
     {
         if (_connection == null) return;
 
+        DisposeConnection(_connection);
+        _connection = null;
+    }
+
+    /// <summary>
+    /// Unsubscribes from the events of the given connection and disposes it.
+    /// </summary>
+    private void DisposeConnection(IConnection connection)
+    {
         try
         {
-            _connection.ConnectionShutdownAsync -= OnConnectionShutdownAsync;
-            _connection.CallbackExceptionAsync -= OnCallbackExceptionAsync;
-            _connection.ConnectionBlockedAsync -= OnConnectionBlockedAsync;
-
-            _connection.Dispose();
+            connection.ConnectionShutdownAsync -= OnConnectionShutdownAsync;
+            connection.CallbackExceptionAsync -= OnCallbackExceptionAsync;
+            connection.ConnectionBlockedAsync -= OnConnectionBlockedAsync;
         }
-        catch (IOException ex)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Error while disposing old RabbitMQ connection.");
+            _logger.LogDebug(ex, "Error while unsubscribing from the events of the old RabbitMQ connection.");
+        }
+
+        try
+        {
+            connection.Dispose();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error while disposing old RabbitMQ connection.");
         }
-
-        _connection = null;
     }
 
     #endregion

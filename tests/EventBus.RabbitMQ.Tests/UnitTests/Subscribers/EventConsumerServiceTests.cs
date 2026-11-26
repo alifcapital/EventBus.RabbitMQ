@@ -11,8 +11,10 @@ using EventStorage.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using NSubstitute.Core;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitMQ.Client.Exceptions;
 
 namespace EventBus.RabbitMQ.Tests.UnitTests.Subscribers;
 
@@ -204,6 +206,48 @@ public class EventConsumerServiceTests : BaseTestEntity
     }
 
     [Test]
+    public async Task StopReceivingEventsAsync_WhenChannelBelongsToLostConnection_ShouldNotCancelConsumerNorCloseChannel()
+    {
+        var channel = SetupConsumerChannel();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        // The channel still reports open, but its connection was replaced.
+        _connection.ConnectionId.Returns(Guid.CreateVersion7());
+
+        await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
+
+        await channel.DidNotReceive()
+            .BasicCancelAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        Assert.That(channel.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(IChannel.CloseAsync)),
+            Is.False);
+        Assert.That(HasLog(LogLevel.Warning), Is.False);
+    }
+
+    [Test]
+    public async Task StopReceivingEventsAsync_WhenCancellingConsumerThrowsAlreadyClosedException_ShouldNotLogWarning()
+    {
+        var channel = SetupConsumerChannel();
+        var shutdownReason = new ShutdownEventArgs(ShutdownInitiator.Peer, 320, "CONNECTION_FORCED");
+        channel.BasicCancelAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new AlreadyClosedException(shutdownReason)));
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+
+        await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
+
+        Assert.That(HasLog(LogLevel.Warning), Is.False);
+    }
+
+    [Test]
+    public async Task StopReceivingEventsAsync_AfterStartingConsumer_ShouldUnsubscribeFromReconnected()
+    {
+        SetupConsumerChannel();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+
+        await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
+
+        _connection.Received(1).Reconnected -= Arg.Any<EventHandler>();
+    }
+
+    [Test]
     public async Task StopReceivingEventsAsync_WhenClosingChannelFails_ShouldNotThrow()
     {
         var channel = SetupConsumerChannel();
@@ -275,7 +319,89 @@ public class EventConsumerServiceTests : BaseTestEntity
 
         await InvokePrivateMethodAsync(_consumerService, "OnChannelShutdownAsync", reason);
 
-        await _connection.Received(2).CreateConsumerChannelAsync(Arg.Any<CancellationToken>());
+        // The channel is recreated in the background.
+        await WaitUntilAsync(() => CountCreatedConsumerChannels() == 2);
+        Assert.That(CountCreatedConsumerChannels(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task OnChannelShutdownAsync_WithoutStopping_ShouldDisposeOldChannelBeforeCreatingNewOne()
+    {
+        var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        var oldChannel = channels.Single();
+        var reason = new ShutdownEventArgs(ShutdownInitiator.Peer, 320, "Connection forced");
+
+        await InvokePrivateMethodAsync(_consumerService, "OnChannelShutdownAsync", reason);
+
+        await WaitUntilAsync(() => channels.Count == 2 && GetConsumerChannel(_consumerService) == channels[1]);
+        oldChannel.Received(1).Dispose();
+        Assert.That(GetConsumerChannel(_consumerService), Is.SameAs(channels[1]));
+        Assert.That(HasLogContaining(LogLevel.Warning, "Recreating RabbitMQ consumer channel"), Is.True);
+    }
+
+    [Test]
+    public async Task OnChannelShutdownAsync_WhenRaisedTogetherWithReconnected_ShouldCreateOnlyOneNewConsumer()
+    {
+        var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        _connection.ConnectionId.Returns(Guid.CreateVersion7());
+        var reason = new ShutdownEventArgs(ShutdownInitiator.Peer, 320, "Connection forced");
+
+        await Task.WhenAll(
+            InvokePrivateMethodAsync(_consumerService, "OnChannelShutdownAsync", reason),
+            Task.Run(() => _connection.Reconnected += Raise.Event()));
+
+        await WaitUntilAsync(() => channels.Count >= 2);
+        // Let the duplicate request finish before asserting it created nothing.
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        Assert.That(channels, Has.Count.EqualTo(2));
+    }
+
+    #endregion
+
+    #region OnConnectionReconnected
+
+    [Test]
+    public async Task OnConnectionReconnected_WhenChannelBelongsToLostConnection_ShouldRecreateChannel()
+    {
+        var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        // A channel that missed the shutdown notification still reports open.
+        _connection.ConnectionId.Returns(Guid.CreateVersion7());
+
+        _connection.Reconnected += Raise.Event();
+
+        await WaitUntilAsync(() => channels.Count == 2 && GetConsumerChannel(_consumerService) == channels[1]);
+        channels[0].Received(1).Dispose();
+        Assert.That(GetConsumerChannel(_consumerService), Is.SameAs(channels[1]));
+    }
+
+    [Test]
+    public async Task OnConnectionReconnected_WhenChannelIsOpenOnCurrentConnection_ShouldNotRecreateChannel()
+    {
+        var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+
+        _connection.Reconnected += Raise.Event();
+
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        Assert.That(channels, Has.Count.EqualTo(1));
+        channels[0].DidNotReceive().Dispose();
+    }
+
+    [Test]
+    public async Task OnConnectionReconnected_AfterStopping_ShouldNotRecreateChannel()
+    {
+        var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
+        await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
+        await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
+        _connection.ConnectionId.Returns(Guid.CreateVersion7());
+
+        _connection.Reconnected += Raise.Event();
+
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        Assert.That(channels, Has.Count.EqualTo(1));
     }
 
     #endregion
@@ -449,10 +575,52 @@ public class EventConsumerServiceTests : BaseTestEntity
     /// </summary>
     private IChannel SetupConsumerChannel()
     {
+        var channel = CreateOpenedConsumerChannel();
+        SetupConsumerConnection(_ => channel);
+
+        return channel;
+    }
+
+    /// <summary>
+    /// Sets up the connection to create a new channel each time, to tell the recreated channel from the old one.
+    /// </summary>
+    /// <returns>The channels created so far, in the order of creation.</returns>
+    private List<IChannel> SetupConsumerChannelsCreatingNewChannelEachTime()
+    {
+        var channels = new List<IChannel>();
+        SetupConsumerConnection(_ =>
+        {
+            var channel = CreateOpenedConsumerChannel();
+            lock (channels)
+                channels.Add(channel);
+
+            return channel;
+        });
+
+        return channels;
+    }
+
+    /// <summary>
+    /// Sets up the connection to create channels with the given factory, and creates the consumer.
+    /// </summary>
+    private void SetupConsumerConnection(Func<CallInfo, IChannel> channelFactory)
+    {
         var connection = Substitute.For<IRabbitMqConnection>();
+        connection.CreateConsumerChannelAsync(Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(channelFactory(callInfo)));
+        _rabbitMqConnectionManager.GetOrCreateConnection(_settings.VirtualHostSettings).Returns(connection);
+        _connection = connection;
+        // The consumer resolves its connection while it is being created, so it is created after the connection.
+        _consumerService = new EventConsumerService(_settings, _serviceProvider, false);
+    }
+
+    /// <summary>
+    /// Creates an opened channel on which the consumer can be started successfully.
+    /// </summary>
+    private static IChannel CreateOpenedConsumerChannel()
+    {
         var channel = Substitute.For<IChannel>();
         channel.IsOpen.Returns(true);
-        connection.CreateConsumerChannelAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(channel));
         channel.QueueDeclareAsync(
                 Arg.Any<string>(),
                 Arg.Any<bool>(),
@@ -473,12 +641,27 @@ public class EventConsumerServiceTests : BaseTestEntity
                 Arg.Any<IAsyncBasicConsumer>(),
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(ConsumerTag));
-        _rabbitMqConnectionManager.GetOrCreateConnection(_settings.VirtualHostSettings).Returns(connection);
-        _connection = connection;
-        // The consumer resolves its connection while it is being created, so it is created after the connection.
-        _consumerService = new EventConsumerService(_settings, _serviceProvider, false);
 
         return channel;
+    }
+
+    /// <summary>
+    /// Counts how many consumer channels were requested from the connection.
+    /// </summary>
+    private int CountCreatedConsumerChannels()
+    {
+        return _connection.ReceivedCalls()
+            .Count(call => call.GetMethodInfo().Name == nameof(IRabbitMqConnection.CreateConsumerChannelAsync));
+    }
+
+    /// <summary>
+    /// Waits up to 5 seconds for the condition, for work done in the background.
+    /// </summary>
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
     }
 
     /// <summary>
@@ -578,6 +761,19 @@ public class EventConsumerServiceTests : BaseTestEntity
             call.GetMethodInfo().Name == nameof(ILogger.Log) &&
             call.GetArguments()[0] is LogLevel logLevel &&
             logLevel == level);
+    }
+
+    private bool HasLogContaining(LogLevel level, string message)
+    {
+        return _logger.ReceivedCalls().Any(call =>
+        {
+            if (call.GetMethodInfo().Name != nameof(ILogger.Log))
+                return false;
+
+            var arguments = call.GetArguments();
+            return arguments[0] is LogLevel logLevel && logLevel == level &&
+                   arguments[2]?.ToString()?.Contains(message, StringComparison.Ordinal) == true;
+        });
     }
 
     #endregion
