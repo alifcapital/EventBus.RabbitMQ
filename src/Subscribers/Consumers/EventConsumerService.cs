@@ -122,8 +122,12 @@ internal class EventConsumerService : IEventConsumerService
     public async Task CreateChannelAndSubscribeReceiverAsync(CancellationToken cancellationToken)
     {
         _serviceCancellationToken = cancellationToken;
-        if (!_isStopping && Interlocked.Exchange(ref _isSubscribedToReconnected, 1) == 0)
-            _connection.Reconnected += OnConnectionReconnected;
+        if (!_isStopping)
+        {
+            var shouldSubscribeToReconnected = Interlocked.Exchange(ref _isSubscribedToReconnected, 1) == 0;
+            if (shouldSubscribeToReconnected)
+                _connection.Reconnected += OnConnectionReconnected;
+        }
 
         await RecreateConsumerOrStartRetryingAsync(channelToRecreate: null, cancellationToken);
     }
@@ -150,7 +154,8 @@ internal class EventConsumerService : IEventConsumerService
                 "Error while creating a channel and subscribing to a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host. Will keep retrying every {RetryDelay} until it succeeds.",
                 _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, RetryDelay);
 
-            if (Interlocked.Exchange(ref _isRetrying, 1) == 0)
+            var shouldStartRetryLoop = Interlocked.Exchange(ref _isRetrying, 1) == 0;
+            if (shouldStartRetryLoop)
                 _ = RetryCreateChannelAndSubscribeReceiverAsync(cancellationToken);
         }
     }
@@ -320,7 +325,9 @@ internal class EventConsumerService : IEventConsumerService
                 arguments: virtualHostSettings.QueueArguments,
                 noWait: false,
                 cancellationToken: cancellationToken);
-            foreach (var eventSettings in _subscribers.Values.Select(s => s.Settings))
+
+            var eventsSettings = _subscribers.Values.Select(s => s.Settings);
+            foreach (var eventSettings in eventsSettings)
                 await channel.QueueBindAsync(
                     queue: _connectionOptions.QueueName,
                     exchange: virtualHostSettings.ExchangeName,
@@ -431,7 +438,8 @@ internal class EventConsumerService : IEventConsumerService
     public async Task StopReceivingEventsAsync(CancellationToken cancellationToken)
     {
         _isStopping = true;
-        if (Interlocked.Exchange(ref _isSubscribedToReconnected, 0) == 1)
+        var shouldUnsubscribeFromReconnected = Interlocked.Exchange(ref _isSubscribedToReconnected, 0) == 1;
+        if (shouldUnsubscribeFromReconnected)
             _connection.Reconnected -= OnConnectionReconnected;
 
         // Wait for a channel being recreated right now, so it does not keep consuming after the stop.

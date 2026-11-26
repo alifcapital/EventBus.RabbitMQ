@@ -34,12 +34,6 @@ internal class RabbitMqConnection : IRabbitMqConnection
     public event EventHandler Reconnected;
 
     /// <summary>
-    /// 1 while <see cref="RetryReconnectAsync"/> is running, otherwise 0, so only one retry loop is started.
-    /// An <see cref="int"/> instead of a <see cref="bool"/>, to be used with <see cref="Interlocked"/>.
-    /// </summary>
-    private int _isRetryingToReconnect;
-
-    /// <summary>
     /// Used only for a temporary channel to verify that the RabbitMQ connection
     /// is actually open and usable before marking it as connected.
     /// </summary>
@@ -50,6 +44,12 @@ internal class RabbitMqConnection : IRabbitMqConnection
         consumerDispatchConcurrency: null
     );
 
+    /// <summary>
+    /// 1 while <see cref="RetryReconnectAsync"/> is running, otherwise 0, so only one retry loop is started.
+    /// An <see cref="int"/> instead of a <see cref="bool"/>, to be used with <see cref="Interlocked"/>.
+    /// </summary>
+    private int _isRetryingToReconnect;
+    
     private readonly IConnectionFactory _connectionFactory;
     private readonly RabbitMqHostSettings _connectionOptions;
     private readonly ILogger<RabbitMqConnection> _logger;
@@ -91,7 +91,6 @@ internal class RabbitMqConnection : IRabbitMqConnection
                     );
 
                 var applicationName = AppDomain.CurrentDomain.FriendlyName;
-                // The id lets you find this connection in the management UI by the id in the logs.
                 var connectionDisplayName =
                     $"For the {_connectionOptions.VirtualHost} from the {applicationName} service ({newConnectionId})";
 
@@ -316,7 +315,8 @@ internal class RabbitMqConnection : IRabbitMqConnection
                 "Error while reconnecting to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host. Will keep retrying every {RetryDelay} until it succeeds.",
                 _connectionOptions.VirtualHost, _connectionOptions.HostName, ReconnectRetryDelay);
 
-            if (Interlocked.Exchange(ref _isRetryingToReconnect, 1) == 0)
+            var shouldStartRetryLoop = Interlocked.Exchange(ref _isRetryingToReconnect, 1) == 0;
+            if (shouldStartRetryLoop)
                 _ = RetryReconnectAsync();
         }
     }
@@ -473,7 +473,6 @@ internal class RabbitMqConnection : IRabbitMqConnection
         }
         catch (Exception ex)
         {
-            // Unsubscribing from a disposed connection throws.
             _logger.LogDebug(ex, "Error while unsubscribing from the events of the old RabbitMQ connection.");
         }
 
