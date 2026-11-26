@@ -7,18 +7,48 @@ permissions:
   contents: write  # Grant the workflow permission to push to the repository
 
 jobs:
+  # main: increases the version in the .csproj, commits it to main and adds a version tag
   Versioning:
+    if: ${{ github.ref == 'refs/heads/main' }}
     uses: ./.github/workflows/service-versioning.yml
     with:
       project_file_path: "src/EventBus.RabbitMQ.csproj"
-      should_add_version_tag: ${{ github.ref == 'refs/heads/main' }}
+      should_add_version_tag: true
     secrets: inherit
-  
+
+  # Any other branch: builds a preview version ({current .csproj version}.{day}-{hour}-{minute}-preview, UTC,
+  # e.g. 10.0.33.26-05-20-preview) without touching the repository
+  PreviewVersioning:
+    if: ${{ github.ref != 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.preview_version.outputs.version }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Generate preview version
+        id: preview_version
+        run: |
+          CURRENT_VERSION=$(grep -m1 '<Version>' src/EventBus.RabbitMQ.csproj | sed -e 's/<[^>]*>//g' | xargs)
+          if [ -z "$CURRENT_VERSION" ]; then
+            echo "Version not found in src/EventBus.RabbitMQ.csproj"
+            exit 1
+          fi
+
+          # The day is the 4th version number, so it has no leading zero (NuGet would drop it).
+          # Hour and minute are in the pre-release label and keep their zeros, so previews sort correctly.
+          VERSION="$CURRENT_VERSION.$(date -u +'%-d-%H-%M')-preview"
+          echo "Preview version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
   Release:
-    needs: Versioning
+    needs: [Versioning, PreviewVersioning]
+    # Runs when one of the versioning jobs succeeded and the other one was skipped
+    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/push-nuget-package.yml
     with:
       project_file_path: 'src/EventBus.RabbitMQ.csproj'
       package_name: ${{ vars.PACKAGE_NAME }}
-      version: ${{ needs.Versioning.outputs.version }}
+      version: ${{ needs.Versioning.outputs.version || needs.PreviewVersioning.outputs.version }}
     secrets: inherit
