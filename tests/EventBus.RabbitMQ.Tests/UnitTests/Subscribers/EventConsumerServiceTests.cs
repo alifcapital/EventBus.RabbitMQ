@@ -211,7 +211,7 @@ public class EventConsumerServiceTests : BaseTestEntity
         var channel = SetupConsumerChannel();
         await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
         // The channel still reports that it is open, but its connection is lost and replaced with a new one.
-        _connection.ConnectionGeneration.Returns(2);
+        _connection.ConnectionId.Returns(Guid.CreateVersion7());
 
         await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
 
@@ -345,7 +345,7 @@ public class EventConsumerServiceTests : BaseTestEntity
     {
         var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
         await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
-        _connection.ConnectionGeneration.Returns(2);
+        _connection.ConnectionId.Returns(Guid.CreateVersion7());
         var reason = new ShutdownEventArgs(ShutdownInitiator.Peer, 320, "Connection forced");
 
         await Task.WhenAll(
@@ -368,7 +368,7 @@ public class EventConsumerServiceTests : BaseTestEntity
         var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
         await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
         // The channel of a lost connection may still report that it is open, when it is not notified about the shutdown.
-        _connection.ConnectionGeneration.Returns(2);
+        _connection.ConnectionId.Returns(Guid.CreateVersion7());
 
         _connection.Reconnected += Raise.Event();
 
@@ -396,7 +396,7 @@ public class EventConsumerServiceTests : BaseTestEntity
         var channels = SetupConsumerChannelsCreatingNewChannelEachTime();
         await _consumerService.CreateChannelAndSubscribeReceiverAsync(CancellationToken.None);
         await _consumerService.StopReceivingEventsAsync(CancellationToken.None);
-        _connection.ConnectionGeneration.Returns(2);
+        _connection.ConnectionId.Returns(Guid.CreateVersion7());
 
         _connection.Reconnected += Raise.Event();
 

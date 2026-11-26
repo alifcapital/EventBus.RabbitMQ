@@ -99,10 +99,10 @@ internal class EventConsumerService : IEventConsumerService
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// The <see cref="IRabbitMqConnection.ConnectionGeneration"/> of the connection on which the current consumer
+    /// The <see cref="IRabbitMqConnection.ConnectionId"/> of the connection on which the current consumer
     /// channel is created, to detect a channel of an old (lost) connection.
     /// </summary>
-    private int _consumerChannelGeneration;
+    private Guid _consumerChannelConnectionId;
 
     /// <summary>
     /// Whether the background loop retrying to create the consumer is running, to not start more than one at a time.
@@ -222,7 +222,7 @@ internal class EventConsumerService : IEventConsumerService
             {
                 var isCurrentChannelBroken = ReferenceEquals(currentChannel, channelToRecreate);
                 if (!isCurrentChannelBroken && currentChannel.IsOpen &&
-                    _consumerChannelGeneration == _connection.ConnectionGeneration)
+                    _consumerChannelConnectionId == _connection.ConnectionId)
                     return;
 
                 _logger.LogWarning(
@@ -251,7 +251,6 @@ internal class EventConsumerService : IEventConsumerService
         try
         {
             channel = await CreateConsumerChannelAsync(cancellationToken);
-            var channelGeneration = _connection.ConnectionGeneration;
             var consumer = new AsyncEventingBasicConsumer(channel);
             consumer.ReceivedAsync += Consumer_ReceivingEvent;
             var consumerTag = await channel.BasicConsumeAsync(
@@ -261,7 +260,7 @@ internal class EventConsumerService : IEventConsumerService
                 cancellationToken: cancellationToken);
 
             _consumerChannel = channel;
-            _consumerChannelGeneration = channelGeneration;
+            _consumerChannelConnectionId = _connection.ConnectionId;
             _consumerTag = consumerTag;
         }
         catch (Exception e)
@@ -435,11 +434,13 @@ internal class EventConsumerService : IEventConsumerService
         }
 
         IChannel channel;
+        Guid channelConnectionId;
         try
         {
             channel = _consumerChannel;
             if (channel is null) return;
 
+            channelConnectionId = _consumerChannelConnectionId;
             UnsubscribeChannelEvents(channel);
         }
         finally
@@ -449,7 +450,7 @@ internal class EventConsumerService : IEventConsumerService
         }
 
         // A channel of an old (lost) connection may still report that it is open, but it cannot be used anymore.
-        var isChannelUsable = channel.IsOpen && _consumerChannelGeneration == _connection.ConnectionGeneration;
+        var isChannelUsable = channel.IsOpen && channelConnectionId == _connection.ConnectionId;
         try
         {
             if (_consumerTag is not null && isChannelUsable)

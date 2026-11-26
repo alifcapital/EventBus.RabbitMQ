@@ -82,26 +82,32 @@ public class RabbitMqConnectionTests : BaseTestEntity
             Assert.That(exception, Is.Not.Null);
             Assert.That(exception!.InnerException, Is.TypeOf<AlreadyClosedException>());
             Assert.That(HasLogContaining(LogLevel.Debug, "RabbitMQ Client is trying to connect"), Is.True);
-            Assert.That(HasLogContaining(LogLevel.Information, "The RabbitMQ connection is opened"), Is.False);
+            Assert.That(HasLogContaining(LogLevel.Information, "is opened on host"), Is.False);
+            Assert.That(_connection.ConnectionId, Is.EqualTo(Guid.Empty));
         }
     }
 
     [Test]
-    public async Task ConnectAsync_OpeningFirstConnection_ShouldIncrementConnectionGenerationWithoutRaisingReconnected()
+    public async Task ConnectAsync_OpeningFirstConnection_ShouldAssignConnectionIdWithoutRaisingReconnected()
     {
         var openedConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
-        SetupConnectionFactory(openedConnection);
+        var connectionFactory = SetupConnectionFactory(openedConnection);
         var isReconnectedRaised = false;
         _connection.Reconnected += (_, _) => isReconnectedRaised = true;
-        var oldConnectionGeneration = _connection.ConnectionGeneration;
 
         await _connection.ConnectAsync(CancellationToken.None);
 
+        var connectionId = _connection.ConnectionId;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_connection.ConnectionGeneration, Is.EqualTo(oldConnectionGeneration + 1));
+            Assert.That(connectionId, Is.Not.EqualTo(Guid.Empty));
             Assert.That(isReconnectedRaised, Is.False);
+            Assert.That(HasLogContaining(LogLevel.Information, connectionId.ToString()), Is.True);
         }
+        // The id is a part of the connection name, to find the connection in the management UI of RabbitMQ.
+        await connectionFactory.Received(1)
+            .CreateConnectionAsync(Arg.Is<string>(name => name.Contains(connectionId.ToString())),
+                Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -132,6 +138,7 @@ public class RabbitMqConnectionTests : BaseTestEntity
         var newConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
         var connectionFactory = SetupConnectionFactory(lostConnection, Task.FromResult(newConnection));
         await _connection.ConnectAsync(CancellationToken.None);
+        var lostConnectionId = _connection.ConnectionId;
         lostConnection.IsOpen.Returns(false);
         var reconnected = new TaskCompletionSource();
         _connection.Reconnected += (_, _) => reconnected.TrySetResult();
@@ -147,7 +154,8 @@ public class RabbitMqConnectionTests : BaseTestEntity
         });
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_connection.ConnectionGeneration, Is.EqualTo(2));
+            Assert.That(_connection.ConnectionId, Is.Not.EqualTo(lostConnectionId));
+            Assert.That(_connection.ConnectionId, Is.Not.EqualTo(Guid.Empty));
             Assert.That(_connection.IsConnected, Is.True);
         }
     }

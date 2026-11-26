@@ -14,9 +14,22 @@ namespace EventBus.RabbitMQ.Connections;
 internal class RabbitMqConnection : IRabbitMqConnection
 {
     public bool IsConnected => _connection?.IsOpen == true && !_disposed;
-
-    public int ConnectionGeneration => Volatile.Read(ref _connectionGeneration);
-    private int _connectionGeneration;
+    
+    /// <summary>
+    /// A <see cref="Guid"/> cannot be read and written atomically, so <see cref="_connectionId"/> is read and written
+    /// under this lock: a reader on another thread always sees a whole id.
+    /// </summary>
+    private readonly Lock _connectionIdLock = new();
+    
+    private Guid _connectionId = Guid.Empty;
+    public Guid ConnectionId
+    {
+        get
+        {
+            lock (_connectionIdLock)
+                return _connectionId;
+        }
+    }
 
     public event EventHandler Reconnected;
 
@@ -63,6 +76,7 @@ internal class RabbitMqConnection : IRabbitMqConnection
             if (IsConnected) return;
 
             IConnection newConnection = null;
+            var newConnectionId = Guid.CreateVersion7();
             try
             {
                 _logger.LogDebug(
@@ -76,8 +90,9 @@ internal class RabbitMqConnection : IRabbitMqConnection
                     );
 
                 var applicationName = AppDomain.CurrentDomain.FriendlyName;
+                // The id is a part of the name, to find the connection in the management UI of RabbitMQ by the logs.
                 var connectionDisplayName =
-                    $"For the {_connectionOptions.VirtualHost} from the {applicationName} service";
+                    $"For the {_connectionOptions.VirtualHost} from the {applicationName} service ({newConnectionId})";
 
                 newConnection = await policy.ExecuteAsync(
                     ct => _connectionFactory.CreateConnectionAsync(connectionDisplayName, ct),
@@ -109,13 +124,19 @@ internal class RabbitMqConnection : IRabbitMqConnection
             // about the shutdown (the client throws ObjectDisposedException while notifying them and swallows it).
             var oldConnection = _connection;
             _connection = newConnection;
-            isReconnected = Interlocked.Increment(ref _connectionGeneration) > 1;
+            lock (_connectionIdLock)
+            {
+                // A connection was opened before, so the new one replaces a lost (or closed) connection.
+                isReconnected = _connectionId != Guid.Empty;
+                _connectionId = newConnectionId;
+            }
             if (oldConnection is not null)
                 DisposeConnection(oldConnection);
 
             _logger.LogInformation(
-                "The RabbitMQ connection is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
-                _connectionOptions.HostName, _connectionOptions.HostPort, _connectionOptions.VirtualHost);
+                "The RabbitMQ connection '{ConnectionId}' is opened on host '{HostName}:{HostPort}' with virtual host '{VirtualHost}'.",
+                newConnectionId, _connectionOptions.HostName, _connectionOptions.HostPort,
+                _connectionOptions.VirtualHost);
         }
         finally
         {
@@ -238,8 +259,8 @@ internal class RabbitMqConnection : IRabbitMqConnection
         if (_disposed) return Task.CompletedTask;
 
         _logger.LogWarning(
-            "The RabbitMQ connection to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host is shut down. Reconnecting. Reason: {Reason}",
-            _connectionOptions.VirtualHost, _connectionOptions.HostName, reason);
+            "The RabbitMQ connection '{ConnectionId}' to the '{VirtualHost}' virtual host of '{HostName}' RabbitMQ host is shut down. Reconnecting. Reason: {Reason}",
+            ConnectionId, _connectionOptions.VirtualHost, _connectionOptions.HostName, reason);
 
         StartReconnecting(sender as IConnection, closeOpenedConnection: false);
         return Task.CompletedTask;
