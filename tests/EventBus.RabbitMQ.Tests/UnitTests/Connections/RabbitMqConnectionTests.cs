@@ -45,7 +45,9 @@ public class RabbitMqConnectionTests : BaseTestEntity
     [Test]
     public async Task ConnectAsync_WhenCannotOpenConnection_ShouldThrowEventBusException()
     {
-        var exception = await Assert.ThrowsAsync<EventBusException>(async () => await _connection.ConnectAsync(CancellationToken.None));
+        var exception =
+            await Assert.ThrowsAsync<EventBusException>(async () =>
+                await _connection.ConnectAsync(CancellationToken.None));
 
         var expectedMessage =
             $"Error while opening connection to the '{_connectionOptions.VirtualHost}' virtual host of '{_connectionOptions.HostName}'.";
@@ -71,7 +73,9 @@ public class RabbitMqConnectionTests : BaseTestEntity
             .Returns(Task.FromResult(invalidVhostConnection));
         SetPrivateField("_connectionFactory", connectionFactory);
 
-        var exception = await Assert.ThrowsAsync<EventBusException>(async () => await _connection.ConnectAsync(CancellationToken.None));
+        var exception =
+            await Assert.ThrowsAsync<EventBusException>(async () =>
+                await _connection.ConnectAsync(CancellationToken.None));
 
         using (Assert.EnterMultipleScope())
         {
@@ -82,12 +86,93 @@ public class RabbitMqConnectionTests : BaseTestEntity
         }
     }
 
+    [Test]
+    public async Task ConnectAsync_OpeningFirstConnection_ShouldIncrementConnectionGenerationWithoutRaisingReconnected()
+    {
+        var openedConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
+        SetupConnectionFactory(openedConnection);
+        var isReconnectedRaised = false;
+        _connection.Reconnected += (_, _) => isReconnectedRaised = true;
+        var oldConnectionGeneration = _connection.ConnectionGeneration;
+
+        await _connection.ConnectAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_connection.ConnectionGeneration, Is.EqualTo(oldConnectionGeneration + 1));
+            Assert.That(isReconnectedRaised, Is.False);
+        }
+    }
+
+    #endregion
+
+    #region OnConnectionShutdownAsync
+
+    [Test]
+    public async Task OnConnectionShutdownAsync_WhenConnectionIsLost_ShouldNotDisposeConnectionWhileHandlingTheEvent()
+    {
+        var lostConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
+        var newConnectionCreating = new TaskCompletionSource<IConnection>();
+        SetupConnectionFactory(lostConnection, newConnectionCreating.Task);
+        await _connection.ConnectAsync(CancellationToken.None);
+        lostConnection.IsOpen.Returns(false);
+
+        await InvokeConnectionShutdownAsync(lostConnection);
+
+        // The RabbitMQ client notifies the channels after this handler, so the connection must still be usable by them.
+        lostConnection.DidNotReceive().Dispose();
+        var openedConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
+        newConnectionCreating.SetResult(openedConnection);
+    }
+
+    [Test]
+    public async Task OnConnectionShutdownAsync_WhenConnectionIsLost_ShouldOpenNewConnectionBeforeDisposingOldOne()
+    {
+        var lostConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
+        var newConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
+        var connectionFactory = SetupConnectionFactory(lostConnection, Task.FromResult(newConnection));
+        await _connection.ConnectAsync(CancellationToken.None);
+        lostConnection.IsOpen.Returns(false);
+        var reconnected = new TaskCompletionSource();
+        _connection.Reconnected += (_, _) => reconnected.TrySetResult();
+
+        await InvokeConnectionShutdownAsync(lostConnection);
+
+        await reconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Received.InOrder(() =>
+        {
+            connectionFactory.CreateConnectionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            connectionFactory.CreateConnectionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            lostConnection.Dispose();
+        });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_connection.ConnectionGeneration, Is.EqualTo(2));
+            Assert.That(_connection.IsConnected, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task OnConnectionShutdownAsync_AfterDisposing_ShouldNotReconnect()
+    {
+        var lostConnection = CreateOpenedConnection(_ => Task.FromResult(Substitute.For<IChannel>()));
+        var connectionFactory = SetupConnectionFactory(lostConnection);
+        await _connection.ConnectAsync(CancellationToken.None);
+        _connection.Dispose();
+
+        await InvokeConnectionShutdownAsync(lostConnection);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        await connectionFactory.Received(1).CreateConnectionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     #endregion
 
     #region CreatePublisherChannelAsync
 
     [Test]
-    public async Task CreatePublisherChannelAsync_PassingEnabledPublisherConfirmation_ShouldCreateChannelWithEnabledPublisherConfirmation()
+    public async Task
+        CreatePublisherChannelAsync_PassingEnabledPublisherConfirmation_ShouldCreateChannelWithEnabledPublisherConfirmation()
     {
         var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
 
@@ -102,7 +187,8 @@ public class RabbitMqConnectionTests : BaseTestEntity
     }
 
     [Test]
-    public async Task CreatePublisherChannelAsync_PassingDisabledPublisherConfirmation_ShouldCreateChannelWithDisabledPublisherConfirmation()
+    public async Task
+        CreatePublisherChannelAsync_PassingDisabledPublisherConfirmation_ShouldCreateChannelWithDisabledPublisherConfirmation()
     {
         var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
 
@@ -121,7 +207,8 @@ public class RabbitMqConnectionTests : BaseTestEntity
     #region CreateConsumerChannelAsync
 
     [Test]
-    public async Task CreateConsumerChannelAsync_CreatingChannelForConsumer_ShouldCreateChannelWithDisabledPublisherConfirmation()
+    public async Task
+        CreateConsumerChannelAsync_CreatingChannelForConsumer_ShouldCreateChannelWithDisabledPublisherConfirmation()
     {
         var createdChannelOptions = CreateOpenedConnectionForCreatingChannel();
 
@@ -153,6 +240,34 @@ public class RabbitMqConnectionTests : BaseTestEntity
         SetPrivateField("_connectionFactory", connectionFactory);
 
         return createdChannelOptions;
+    }
+
+    /// <summary>
+    /// Sets up the connection factory to return the given connection first, and then the given next connections.
+    /// </summary>
+    private IConnectionFactory SetupConnectionFactory(IConnection firstConnection,
+        params Task<IConnection>[] nextConnections)
+    {
+        var connectionFactory = Substitute.For<IConnectionFactory>();
+        connectionFactory.CreateConnectionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(firstConnection), nextConnections);
+        SetPrivateField("_connectionFactory", connectionFactory);
+
+        return connectionFactory;
+    }
+
+    /// <summary>
+    /// Invokes the handler of the shutdown event of the given connection, as the RabbitMQ client does when it is lost.
+    /// </summary>
+    private async Task InvokeConnectionShutdownAsync(IConnection connection)
+    {
+        var method = typeof(RabbitMqConnection)
+            .GetMethod("OnConnectionShutdownAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.That(method, Is.Not.Null);
+        var reason = new ShutdownEventArgs(ShutdownInitiator.Peer, 320,
+            "CONNECTION_FORCED - Closed via management plugin");
+
+        await (Task)method!.Invoke(_connection, [connection, reason])!;
     }
 
     private static IConnection CreateOpenedConnection(Func<CreateChannelOptions, Task<IChannel>> channelFactory)

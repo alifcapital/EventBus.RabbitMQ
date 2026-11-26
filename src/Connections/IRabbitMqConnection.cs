@@ -11,6 +11,18 @@ public interface IRabbitMqConnection : IDisposable
     bool IsConnected { get; }
 
     /// <summary>
+    /// The number of the RabbitMQ connection that is currently used. It is incremented each time a new connection is
+    /// opened (on the first connect and on each reconnect), so the channels created on an old connection can be detected.
+    /// </summary>
+    int ConnectionGeneration { get; }
+
+    /// <summary>
+    /// Raised after a new RabbitMQ connection is opened to replace the lost one, so the consumers can recreate their
+    /// channels. The handlers must return quickly, e.g. by starting their work in the background.
+    /// </summary>
+    event EventHandler Reconnected;
+
+    /// <summary>
     /// For connecting the server to the RabbitMQ.
     /// </summary>
     /// <throws cref="EventBusException">Throws <see cref="EventBusException"/> when connection cannot be opened.</throws>
