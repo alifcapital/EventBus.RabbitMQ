@@ -29,7 +29,7 @@ internal class EventConsumerService : IEventConsumerService
     private readonly IRabbitMqConnection _connection;
     private IChannel _consumerChannel;
     private CancellationToken _serviceCancellationToken;
-    
+
     /// <summary>
     /// The tag/id of newly created consumer channel to use for closing the opened channel if needed.
     /// </summary>
@@ -125,20 +125,20 @@ internal class EventConsumerService : IEventConsumerService
         if (!_isStopping && Interlocked.Exchange(ref _isSubscribedToReconnected, 1) == 0)
             _connection.Reconnected += OnConnectionReconnected;
 
-        await EnsureConsumerOrStartRetryingAsync(channelToRecreate: null, cancellationToken);
+        await RecreateConsumerOrStartRetryingAsync(channelToRecreate: null, cancellationToken);
     }
 
     /// <summary>
-    /// Runs <see cref="EnsureConsumerAsync"/>; on failure, logs it and starts the retry loop.
+    /// Runs <see cref="RecreateConsumerIfNotUsableAsync"/>; on failure, logs it and starts the retry loop.
     /// </summary>
     /// <param name="channelToRecreate">A channel known to be broken, recreated even if it reports open.</param>
     /// <param name="cancellationToken">The application's stopping token.</param>
-    private async Task EnsureConsumerOrStartRetryingAsync(IChannel channelToRecreate,
+    private async Task RecreateConsumerOrStartRetryingAsync(IChannel channelToRecreate,
         CancellationToken cancellationToken)
     {
         try
         {
-            await EnsureConsumerAsync(channelToRecreate, cancellationToken);
+            await RecreateConsumerIfNotUsableAsync(channelToRecreate, cancellationToken);
         }
         catch (Exception) when (IsStopping)
         {
@@ -178,10 +178,20 @@ internal class EventConsumerService : IEventConsumerService
 
                 try
                 {
-                    await EnsureConsumerAsync(channelToRecreate: null, cancellationToken);
-                    _logger.LogInformation(
-                        "Successfully created a channel and subscribed a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host after retrying.",
-                        _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+                    var isCreated = await RecreateConsumerIfNotUsableAsync(channelToRecreate: null, cancellationToken);
+                    if (isCreated)
+                    {
+                        _logger.LogInformation(
+                            "Successfully created a channel and subscribed a consumer for '{QueueName}' queue of '{VirtualHost}' virtual host after retrying.",
+                            _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+                    }
+                    else
+                    {
+                        _logger.LogDebug(
+                            "Stopped retrying: the consumer of '{QueueName}' queue of '{VirtualHost}' virtual host is already running.",
+                            _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
+                    }
+
                     return;
                 }
                 catch (Exception) when (IsStopping)
@@ -209,12 +219,14 @@ internal class EventConsumerService : IEventConsumerService
     /// </summary>
     /// <param name="channelToRecreate">A channel known to be broken, recreated even if it reports open.</param>
     /// <param name="cancellationToken">The application's stopping token.</param>
-    private async Task EnsureConsumerAsync(IChannel channelToRecreate, CancellationToken cancellationToken)
+    /// <returns>True if a consumer was created; false if the current one is still usable or the service is stopping.</returns>
+    private async Task<bool> RecreateConsumerIfNotUsableAsync(IChannel channelToRecreate,
+        CancellationToken cancellationToken)
     {
         await _reopenChannelGate.WaitAsync(cancellationToken);
         try
         {
-            if (_isStopping) return;
+            if (_isStopping) return false;
 
             var currentChannel = _consumerChannel;
             if (currentChannel is not null)
@@ -222,7 +234,7 @@ internal class EventConsumerService : IEventConsumerService
                 var isCurrentChannelBroken = ReferenceEquals(currentChannel, channelToRecreate);
                 if (!isCurrentChannelBroken && currentChannel.IsOpen &&
                     _consumerChannelConnectionId == _connection.ConnectionId)
-                    return;
+                    return false;
 
                 _logger.LogWarning(
                     "Recreating RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host.",
@@ -234,6 +246,7 @@ internal class EventConsumerService : IEventConsumerService
             }
 
             await CreateChannelAndStartConsumingAsync(cancellationToken);
+            return true;
         }
         finally
         {
@@ -361,7 +374,7 @@ internal class EventConsumerService : IEventConsumerService
             "An exception is thrown in the RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host. The channel will be recreated.",
             _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost);
 
-        StartEnsuringConsumer(sender as IChannel ?? _consumerChannel);
+        StartRecreatingConsumer(sender as IChannel ?? _consumerChannel);
         return Task.CompletedTask;
     }
 
@@ -376,7 +389,7 @@ internal class EventConsumerService : IEventConsumerService
             "The RabbitMQ consumer channel for '{QueueName}' queue of '{VirtualHost}' virtual host is shut down. The channel will be recreated. Reason: {Reason}",
             _connectionOptions.QueueName, _connectionOptions.VirtualHostSettings.VirtualHost, reason);
 
-        StartEnsuringConsumer(sender as IChannel ?? _consumerChannel);
+        StartRecreatingConsumer(sender as IChannel ?? _consumerChannel);
         return Task.CompletedTask;
     }
 
@@ -387,17 +400,17 @@ internal class EventConsumerService : IEventConsumerService
     {
         if (IsStopping) return;
 
-        StartEnsuringConsumer(channelToRecreate: null);
+        StartRecreatingConsumer(channelToRecreate: null);
     }
 
     /// <summary>
     /// Recreates the consumer in the background, so the RabbitMQ client's event handlers are not blocked
     /// (the client notifies the channels of a lost connection one by one).
     /// </summary>
-    private void StartEnsuringConsumer(IChannel channelToRecreate)
+    private void StartRecreatingConsumer(IChannel channelToRecreate)
     {
         var cancellationToken = _serviceCancellationToken;
-        _ = Task.Run(() => EnsureConsumerOrStartRetryingAsync(channelToRecreate, cancellationToken),
+        _ = Task.Run(() => RecreateConsumerOrStartRetryingAsync(channelToRecreate, cancellationToken),
             CancellationToken.None);
     }
 
